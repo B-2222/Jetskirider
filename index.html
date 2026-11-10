@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Jetski Rider</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600&family=Saira+Extra+Condensed:ital,wght@0,600;0,800;1,700;1,900&display=swap">
+<link rel="stylesheet" href="./style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="gl" aria-label="Jetski Rider game view"></canvas>
+
+  <div id="loading"><div class="load-inner"><div class="load-title">JETSKI RIDER</div><div class="load-sub" id="loadText">Filling the lagoon…</div></div></div>
+
+  <!-- ===================== HUD ===================== -->
+  <div id="hud" hidden>
+    <div class="hud-top">
+      <div class="chip" id="skiChip"><span class="chip-brand">SEA-DOO</span><span id="skiName">SPARK TRIXX</span></div>
+      <div class="score">
+        <div class="score-row"><span class="lbl">SCORE</span><span class="val" id="score">0</span></div>
+        <div class="score-row dim"><span class="lbl">BEST</span><span class="val" id="best">0</span></div>
+      </div>
+      <div class="hud-btns">
+        <button class="icon-btn" id="btnCam" title="Change camera (C)">CAM</button>
+        <button class="icon-btn" id="btnMute" title="Sound on/off (M)">SND</button>
+        <button class="icon-btn" id="btnPause" title="Garage / pause (Esc)">MENU</button>
+      </div>
+    </div>
+
+    <div class="trick-zone">
+      <div class="live" id="live" hidden><span id="liveName">POWERSLIDE</span><span id="livePts">0</span></div>
+      <div class="combo" id="combo" hidden>x2</div>
+      <div class="pops" id="pops"></div>
+    </div>
+
+    <div class="banner" id="banner" hidden></div>
+
+    <div class="cluster left">
+      <div class="vts" title="VTS trim">
+        <div class="vts-bars" id="vtsBars"></div>
+        <div class="vts-lbl">VTS</div>
+      </div>
+      <div class="mini">
+        <div class="mini-row"><span class="lbl">TRIM</span><span class="val" id="trimVal">0</span></div>
+        <div class="mini-row"><span class="lbl">PUMP</span><span class="val" id="pumpVal">LOADED</span></div>
+        <div class="mini-row"><span class="lbl">MODE</span><span class="val" id="modeVal">N</span></div>
+      </div>
+    </div>
+
+    <div class="cluster right">
+      <div class="rpm"><div class="rpm-fill" id="rpmFill"></div><div class="rpm-ticks"></div></div>
+      <div class="speed"><span id="speed">0</span><span class="unit">km/h</span></div>
+      <div class="rpm-lbl"><span id="rpmVal">1800</span> rpm</div>
+    </div>
+
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <!-- ===================== touch controls ===================== -->
+  <div id="touch" hidden>
+    <div class="t-left">
+      <div class="t-stick" data-stick><div class="t-knob" data-knob></div><span>STEER</span></div>
+    </div>
+    <div class="t-mid">
+      <button data-btn="trimDown">TRIM −</button>
+      <button data-btn="trimUp">TRIM +</button>
+    </div>
+    <div class="t-right">
+      <button class="t-small" data-btn="fwd">LEAN FWD</button>
+      <button class="t-small" data-btn="back">PULL BACK</button>
+      <button class="t-brake" data-btn="brake">BRAKE</button>
+      <button class="t-gas" data-btn="gas">GAS</button>
+    </div>
+  </div>
+
+  <!-- ===================== garage / menu ===================== -->
+  <div id="menu" hidden>
+    <div class="menu-panel">
+      <header class="menu-head">
+        <h1>JETSKI RIDER</h1>
+        <p class="tag">Open-water freestyle. Sea-Doo only.</p>
+      </header>
+
+      <section class="garage" aria-label="Choose your ski">
+        <div class="ski-list" id="skiList" role="listbox" aria-label="Sea-Doo models"></div>
+        <div class="ski-detail">
+          <div class="ski-title"><h2 id="mName">SPARK TRIXX</h2><span id="mTag">Rotax 900 ACE · 90 hp</span></div>
+          <p id="mBlurb"></p>
+          <div class="stats" id="mStats"></div>
+          <div class="row"><span class="lbl">COLOUR</span><div class="swatches" id="mColors"></div><span class="cw-name" id="mColorName"></span></div>
+        </div>
+      </section>
+
+      <section class="conds">
+        <div class="row"><span class="lbl">WATER</span><div class="seg" id="segSea"></div></div>
+        <div class="row"><span class="lbl">LIGHT</span><div class="seg" id="segTime"></div></div>
+      </section>
+
+      <div class="menu-actions">
+        <button class="go" id="btnRide">RIDE</button>
+        <button class="ghost" id="btnHelp">CONTROLS</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="help" hidden>
+    <div class="help-panel">
+      <h2>CONTROLS</h2>
+      <div class="help-grid">
+        <div><kbd>W</kbd> / <kbd>↑</kbd></div><div>Throttle</div>
+        <div><kbd>S</kbd> / <kbd>↓</kbd></div><div>iBR brake, then reverse</div>
+        <div><kbd>A</kbd> <kbd>D</kbd> / <kbd>←</kbd> <kbd>→</kbd></div><div>Steer. No throttle means almost no steering, like a real ski</div>
+        <div><kbd>E</kbd> / <kbd>Q</kbd></div><div>VTS trim up / down. Trim up for huge rooster tails</div>
+        <div><kbd>Space</kbd></div><div>Pull back. Wheelies and tail stands (best on the Trixx)</div>
+        <div><kbd>Shift</kbd></div><div>Lean forward. Plants the bow so the stern whips round</div>
+        <div><kbd>C</kbd></div><div>Camera</div>
+        <div><kbd>R</kbd></div><div>Reset to open water</div>
+        <div><kbd>T</kbd> / <kbd>V</kbd></div><div>Change light / water</div>
+        <div><kbd>M</kbd> · <kbd>Esc</kbd></div><div>Sound · Garage</div>
+      </div>
+      <h3>TRICKS</h3>
+      <ul>
+        <li><b>Powerslide:</b> trim up, hold full lock and stay on the gas until the stern lets go. Counter-steer to hold it.</li>
+        <li><b>180:</b> lean forward, full lock, gas. When you are sliding backwards with the nose down, hit the throttle and watch the pump blast.</li>
+        <li><b>Wheelie:</b> trim all the way up, pull back, gas.</li>
+        <li><b>Air:</b> hit a ramp or a wave face. Pull back or lean forward in the air to flip.</li>
+      </ul>
+      <p class="pad-note">Gamepad: left stick steer and lean, RT gas, LT brake, bumpers trim.</p>
+      <button class="go small" id="btnHelpClose">GOT IT</button>
+    </div>
+  </div>
+
+  <div id="flash"></div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
