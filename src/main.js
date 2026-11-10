@@ -398,7 +398,7 @@ class Game {
     this.canvas.focus?.();
     if (!this.shownHint) {
       this.shownHint = true;
-      this.showHint(this.mobile ? 'Hold GAS to go. No gas means no steering. TRIM + for rooster tails.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>E</kbd>/<kbd>Q</kbd> trim · <kbd>Space</kbd> pull back · <kbd>Shift</kbd> lean forward', 9);
+      this.showHint(this.mobile ? 'Hold GAS to go. No gas means no steering. TRIM + for rooster tails.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>E</kbd>/<kbd>Q</kbd> trim · <kbd>Space</kbd> pull back · hold <kbd>Shift</kbd> to slide', 9);
     }
   }
 

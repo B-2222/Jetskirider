@@ -21,7 +21,7 @@ Then go to `http://localhost:8000`.
 | `A` `D` / `Left` `Right` | Steer (almost no steering off the throttle, like a real ski) |
 | `E` / `Q` | VTS trim up / down. Trim up for big rooster tails |
 | `Space` | Pull back: wheelies and tail stands |
-| `Shift` | Throw your weight in: tips the hull faster for slides, plants the bow |
+| `Shift` | Slide: hold while turning to break the hull loose. Without it the ski carves |
 | `C` | Camera |
 | `R` | Reset to open water |
 | `T` / `V` | Change light / water |
@@ -31,7 +31,7 @@ Touch controls and gamepads work too.
 
 ## The garage
 
-Spark Trixx, Spark 2up, GTI SE 170, GTR 230, RXP-X 325 and RXT-X 325, each with its own weight, thrust, grip, trim range and colourways.
+Spark Trixx, Spark 2up, GTI SE 170, GTR 230, RXP-X 325, RXT-X 325 and a 600 hp tuned RXP-X, each with its own weight, thrust, grip, trim range and colourways.
 
 ## How it works
 

@@ -199,6 +199,31 @@ export class SkiEffects {
       F.stamp(phys.px - fhx * 0.6, phys.pz - fhz * 0.6, 0.38, k * dt * 1.3, k * dt * 2.6);
     }
 
+    // --------------------------------------------------------- carve spray
+    // Banked over in a turn the hull bottom faces outward and peels a sheet
+    // of water off the outside. Faster and steeper = bigger fan.
+    {
+      const bank = Math.abs(T.roll);
+      const carve = clamp((bank - 0.12) / 0.5, 0, 1.3) * clamp((T.u - 6) / 18, 0, 1.6) * Math.min(1, T.wet * 3);
+      if (carve > 0.02) {
+        const out = T.roll > 0 ? -1 : 1; // rolled right (right turn) -> spray goes left
+        this.acc.carve = (this.acc.carve || 0) + 620 * carve * dn * dt;
+        let n = this.acc.carve | 0;
+        this.acc.carve -= n;
+        const L = phys.spec.L;
+        const wy = this.world.waterHeight(phys.px, phys.pz, phys.time);
+        for (let i = 0; i < n; i++) {
+          const along = (rnd() * 0.75 - 0.3) * L;
+          const o = (2.5 + spd * (0.16 + rnd() * 0.3) * (0.5 + carve * 0.5)) * out;
+          S.emit(phys.px + fhx * along + rhx * out * 0.35, wy + 0.04, phys.pz + fhz * along + rhz * out * 0.35,
+            phys.vx * (0.55 + rnd() * 0.3) + rhx * o, 1.2 + spd * (0.07 + rnd() * 0.12) * carve, phys.vz * (0.55 + rnd() * 0.3) + rhz * o,
+            0.6 + rnd() * 0.9, 0.05 + rnd() * 0.05, 0.2 + rnd() * 0.3, 1, 0.45, 0.9, 0.1);
+        }
+        F.stamp(phys.px + rhx * out * 0.6, phys.pz + rhz * out * 0.6, 0.5, carve * dt * 3, carve * dt * 2.5);
+        level += carve * 0.4;
+      }
+    }
+
     // ------------------------------------------------------- landing splash
     if (T.impact > 2.4) {
       const im = Math.min(T.impact, 14);

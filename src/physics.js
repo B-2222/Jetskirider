@@ -109,13 +109,16 @@ export class SkiPhysics {
     this.spec = spec;
     this.points = buildPoints(spec);
     this.m = spec.mass;
+    // Water forces scale with hull size, not with mass, so a heavy ski sits
+    // deeper, reacts slower and stays planted while a light one skips around.
+    this.mh = 300 * (spec.L * spec.B) / (2.79 * 1.18);
     this.Ix = spec.mass * Math.pow(spec.B * 0.34, 2); // roll
     this.Iy = spec.mass * Math.pow(spec.L * 0.27, 2); // yaw
     this.Iz = spec.mass * Math.pow(spec.L * 0.265, 2); // pitch
     const light = spec.style === 'spark';
     this.leanRate = spec.leanRate ?? (light ? 1.5 : 0.7); // how fast the rider can roll the hull onto its side
     this.unhook = spec.unhook ?? (light ? 0.28 : 0.36); // grip left once the V is out of the water
-    this.carve = spec.carve ?? (light ? 0.74 : 0.68); // full-lock demand as a fraction of grip
+    this.carve = spec.carve ?? (light ? 0.62 : 0.6); // full-lock demand as a fraction of grip
     this.hopK = spec.hop ?? (light ? 1 : 0.5);
     this.nozzleL = { x: -0.4 * spec.L, y: -0.245, z: 0 };
     this.intakeL = { x: -0.17 * spec.L, y: -0.45, z: 0 };
@@ -214,11 +217,13 @@ export class SkiPhysics {
     // slides. Heavy skis take longer to tip; Shift (weight forward) helps.
     const rollNow = -Math.asin(clamp(ry, -1, 1));
     {
-      const want = Math.abs(c.steer) > 0.8 && thr > 0.4 && Math.abs(this.vx * fhx + this.vz * fhz) > 5;
-      const rate = want ? this.leanRate * (c.lean > 0 ? 2 : 1) * (1 + trimFrac * 0.5) : -2.5;
+      // c.lean > 0 is the slide button: only then does the rider throw the
+      // hull over. Without it the ski stays hooked up and carves.
+      const want = c.lean > 0 && Math.abs(c.steer) > 0.3 && Math.hypot(this.vx, this.vz) > 4;
+      const rate = want ? this.leanRate * (1 + trimFrac * 0.5) : -2.5;
       this.leanIn = clamp(this.leanIn + rate * dt, 0, 1);
     }
-    const unhooked = smoothstep(0.36, 0.72, Math.abs(rollNow)) * upright;
+    const unhooked = this.leanIn * smoothstep(0.3, 0.65, Math.abs(rollNow)) * upright;
     const gripMul = 1 - (1 - this.unhook) * unhooked;
 
     let Fx = 0, Fy = -m * G, Fz = 0;
@@ -295,7 +300,7 @@ export class SkiPhysics {
         aoa = clamp(aoa, -0.05, 0.42);
         fyp += Math.min(1.05 * p.lift * up * Math.min(up, 13) * aoa * Math.sqrt(sub), 60) * upright;
       }
-      addForce(ox, oy, oz, 0, m * p.w * fyp, 0);
+      addForce(ox, oy, oz, 0, this.mh * p.w * fyp, 0);
 
       // horizontal hydrodynamics (applied at CoM height: yaw torque only)
       const vp = pvx * rhx + pvz * rhz;
@@ -379,9 +384,13 @@ export class SkiPhysics {
       const spdH = Math.hypot(this.vx, this.vz);
       const rHook = Math.min((au + 5 * jetFrac) / sp.turnR, (sp.grip * this.carve) / Math.max(au, 1));
       const slipA = spdH > 2 ? Math.abs(Math.atan2(vcm, Math.abs(ucm) + 0.5)) : 0;
-      const loose = Math.max(smoothstep(0.16, 0.55, slipA), unhooked * 0.7) * smoothstep(3, 7, spdH);
+      const li = this.leanIn;
+      // only a committed slide lets the stern come round; otherwise the rider
+      // eases the bars as soon as the hull starts to slip and it stays hooked up
+      const loose = Math.max(smoothstep(0.16, 0.55, slipA), unhooked * 0.7) * smoothstep(3, 7, spdH) * smoothstep(0, 0.35, li);
+      const hold = 1 - (1 - smoothstep(0, 0.35, li)) * smoothstep(0.1, 0.3, slipA) * 0.9;
       const rLoose = 0.8 + 1.7 * jetFrac;
-      const rCmd = sN * (rHook + (Math.max(rLoose, rHook) - rHook) * loose);
+      const rCmd = sN * (rHook + (Math.max(rLoose, rHook) - rHook) * loose) * hold;
       const auth = wetStern * upright * (0.16 * clamp(au / 6, 0, 1) + 0.84 * jetFrac);
       const ts = this.Iy * 7.5 * (rCmd - yawRateR) * auth;
       Tx -= ux * ts; Ty -= uy * ts; Tz -= uz * ts;
@@ -390,12 +399,16 @@ export class SkiPhysics {
 
     // --- banking: the V hull + rider lean the ski into the turn -------------
     const aLat = yawRateR * Math.max(ucm, 0);
-    const bankT = clamp(Math.atan2(aLat, G) * 0.8 + sN * 0.1 * clamp(ucm / 8, 0, 1) + Math.sign(sN) * this.leanIn * 0.7, -0.98, 0.98);
+    const bankRaw = clamp(Math.atan2(aLat, G) * 0.75 + sN * 0.1 * clamp(ucm / 8, 0, 1), -0.6, 0.6) + Math.sign(sN) * this.leanIn * 0.6;
+    this.bankS = damp(this.bankS || 0, clamp(bankRaw, -0.92, 0.92), 0.22, dt);
+    const bankT = this.bankS;
     const roll = -Math.asin(clamp(ry, -1, 1));
     const wRoll = this.wx * fx + this.wy * fy + this.wz * fz;
     const bankK = (wet * 0.85 + 0.15 * Math.min(1, groundN * 3)) * upright;
     const li = this.leanIn;
-    const tb = this.Ix * ((34 + 300 * li) * (bankT - roll) - (8 + 22 * li) * wRoll) * Math.max(bankK, 0.55 * li * upright * Math.min(1, wet * 4 + groundN * 4));
+    let tb = ((150 + 120 * li) * (bankT - roll) - (24 + 8 * li) * wRoll) * Math.max(bankK, 0.55 * li * upright * Math.min(1, wet * 4 + groundN * 4));
+    // the rider can only shove so hard, and never past the point of no return
+    tb = this.Ix * clamp(tb, -55, 55) * smoothstep(1.35, 1.05, Math.abs(roll));
     Tx += fx * tb; Ty += fy * tb; Tz += fz * tb;
 
     // --- rider weight -------------------------------------------------------
@@ -410,7 +423,7 @@ export class SkiPhysics {
       const target = sp.wheelieMax * -c.lean;
       tp = clamp(this.Iz * (26 * (target - pitchNow) - 7 * wPitch), -sp.leanTorque * 1.4, sp.leanTorque);
     } else {
-      tp = -c.lean * sp.leanTorque * (air ? 0.75 : 1);
+      tp = -c.lean * sp.leanTorque * (air ? 0.75 : 0.3);
     }
     // engine + rider sit aft of the centre of buoyancy: static bow-up trim
     tp += m * G * 0.17 * wet * upright;
