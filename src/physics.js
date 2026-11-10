@@ -296,7 +296,7 @@ export class SkiPhysics {
       const up = pvx * fhx + pvz * fhz;
       if (up > 0.5 && upright > 0.1) {
         const slope = -(S.nx * fhx + S.nz * fhz);
-        let aoa = fy + p.rocker + 0.035 + slope * 0.8 - relVy / Math.max(up, 4);
+        let aoa = fy + p.rocker + 0.035 + slope * 0.8 * Math.min(1, 24 / up) - relVy / Math.max(up, 4);
         aoa = clamp(aoa, -0.05, 0.42);
         fyp += Math.min(1.05 * p.lift * up * Math.min(up, 13) * aoa * Math.sqrt(sub), 60) * upright;
       }
@@ -434,7 +434,16 @@ export class SkiPhysics {
     tp += this.Iz * 6 * hop * (wetStern * 0.8 + 0.2);
     // not pulling back: the rider's weight keeps the bow from standing up
     if (c.lean >= 0 && !air && pitchNow > 0.35) tp -= Math.min(this.Iz * (24 * (pitchNow - 0.35) + 5 * Math.max(wPitch, 0)), sp.leanTorque * 2.2);
-    Fy += m * 90 * hop * Math.min(1, wetStern + 0.25) * upright;
+    // At real speed the rider is braced and working the ski flat: without it
+    // a 150 km/h hull would kite or stuff its nose on the first bit of chop.
+    const stab = c.lean === 0 ? smoothstep(17, 32, Math.abs(ucm)) * upright : 0;
+    if (stab > 0) {
+      tp += clamp(this.Iz * (20 * (0.05 - pitchNow) - 7 * wPitch), -sp.leanTorque * 3, sp.leanTorque * 3) * stab;
+      if (air) {
+        const tr = this.Ix * clamp(-10 * roll - 4 * wRoll, -30, 30) * stab;
+        Tx += fx * tr; Ty += fy * tr; Tz += fz * tr;
+      }
+    }
     Tx += rx * tp; Ty += ry * tp; Tz += rz * tp;
     if (air) {
       // a touch of body english in the air
