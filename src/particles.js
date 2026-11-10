@@ -43,7 +43,7 @@ export class Spray {
       uNoise: { value: noiseTex },
       uLit: { value: new THREE.Color(1, 1, 1) },
       uShade: { value: new THREE.Color(0.6, 0.7, 0.8) },
-      uStretch: { value: 0.022 },
+      uStretch: { value: 0.034 },
     };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -63,7 +63,7 @@ export class Spray {
           vec3 vv = (viewMatrix * vec4(iVel, 0.0)).xyz;
           float sp = length(vv.xy);
           vec2 d = sp > 0.001 ? vv.xy / sp : vec2(0.0, 1.0);
-          float st = min(sp * uStretch, size * 2.2);
+          float st = min(sp * uStretch, size * 3.0);
           vec2 c = position.xy;
           mv.xy += d * c.y * (size + st) + vec2(d.y, -d.x) * c.x * size;
           gl_Position = projectionMatrix * mv;
@@ -89,7 +89,10 @@ export class Spray {
           float lace = texture2D(uNoise, vUv * 0.8 + o * 1.7).b;
           // broken, clumpy coverage instead of a soft puff: reads as thrown water
           float d = n * 0.55 + fine * 0.3 + lace * 0.3;
-          float a = smoothstep(1.0, 0.15, r) * smoothstep(0.42, 0.78, d + (1.0 - r) * 0.42);
+          // ragged outline: push the edge in and out with noise so droplets
+          // are never clean discs
+          float rr = r * (0.55 + 1.5 * n);
+          float a = smoothstep(1.0, 0.25, rr) * smoothstep(0.4, 0.76, d + (1.0 - rr) * 0.42);
           a *= vAlpha;
           float l = clamp(0.58 + 0.42 * p.y + (n - 0.5) * 0.9, 0.0, 1.0);
           gl_FragColor = vec4(mix(uShade, uLit, l), clamp(a, 0.0, 1.0));

@@ -45,12 +45,12 @@ export class SkiEffects {
       const nv = T.nozzleVel;
       const nx = T.nozzle.x, nz = T.nozzle.z;
       const ny = Math.max(T.nozzle.y, T.waterAtNozzle + 0.02);
-      const spread = 0.03 + 0.1 * (1 - e) + 0.02 * flow;
-      const rate = 3600 * Math.pow(flow, 0.75) * (0.06 + 0.94 * out) * dn;
+      const spread = 0.035 + 0.1 * (1 - e) + 0.02 * flow + clamp(jd.y, 0, 0.5) * 0.06;
+      const rate = 4200 * Math.pow(flow, 0.75) * (0.06 + 0.94 * out) * dn * (1 + clamp(jd.y, 0, 0.5) * 1.2);
       this.acc.jet += rate * dt;
       let n = this.acc.jet | 0;
       this.acc.jet -= n;
-      if (n > 260) n = 260;
+      if (n > 340) n = 340;
       const boost = 1 + clamp(jd.y, 0, 0.5) * 0.7;
       for (let i = 0; i < n; i++) {
         const sp = spread * (0.3 + rnd() * rnd() * 2.2);
@@ -63,8 +63,8 @@ export class SkiEffects {
           nx + vx * k + rs() * 0.04, ny + vy * k + rs() * 0.03, nz + vz * k + rs() * 0.04,
           vx, vy, vz,
           1.3 + rnd() * 1.5,
-          core ? 0.06 + rnd() * 0.05 : 0.09 + rnd() * 0.07,
-          core ? 0.2 + rnd() * 0.25 : 0.35 + rnd() * 0.4,
+          core ? 0.07 + rnd() * 0.05 : 0.1 + rnd() * 0.08,
+          core ? 0.26 + rnd() * 0.3 : 0.45 + rnd() * 0.5,
           1, core ? 0.16 : 0.45, core ? 1.0 : 0.7, 0.12
         );
       }
