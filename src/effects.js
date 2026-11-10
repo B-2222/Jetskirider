@@ -45,8 +45,8 @@ export class SkiEffects {
       const nv = T.nozzleVel;
       const nx = T.nozzle.x, nz = T.nozzle.z;
       const ny = Math.max(T.nozzle.y, T.waterAtNozzle + 0.02);
-      const spread = 0.035 + 0.1 * (1 - e) + 0.02 * flow + clamp(jd.y, 0, 0.5) * 0.06;
-      const rate = 4200 * Math.pow(flow, 0.75) * (0.06 + 0.94 * out) * dn * (1 + clamp(jd.y, 0, 0.5) * 1.2);
+      const spread = 0.03 + 0.1 * (1 - e) + 0.02 * flow + clamp(jd.y, 0, 0.5) * 0.05 * (1 - e * 0.6);
+      const rate = 4200 * Math.pow(flow, 0.75) * (0.06 + 0.94 * out) * dn * (1 + clamp(jd.y, 0, 0.5) * 1.2) * (1 + e * 0.6);
       this.acc.jet += rate * dt;
       let n = this.acc.jet | 0;
       this.acc.jet -= n;
@@ -69,7 +69,7 @@ export class SkiEffects {
         );
       }
       // hanging mist around the tail
-      this.acc.mist += rate * 0.07 * dt;
+      this.acc.mist += rate * (0.07 + e * 0.1) * dt;
       let m = this.acc.mist | 0;
       this.acc.mist -= m;
       for (let i = 0; i < m; i++) {
@@ -83,12 +83,13 @@ export class SkiEffects {
       // hitting the gas with the nozzle clear of the water: the pump coughs
       // out everything it has in one fat burst
       const rising = T.power - this.prevPower;
+      const sp_jet = phys.spec.jet;
       if (e > 0.45 && rising > 0.012 && this.burstCool <= 0 && T.pumpLoad > 0.4) {
         this.burstCool = 0.55;
-        const nb = (260 * dn) | 0;
+        const nb = (520 * dn) | 0;
         for (let i = 0; i < nb; i++) {
-          const sp = 0.1 + rnd() * 0.3;
-          const sv = T.jetSpeed * (0.35 + rnd() * 0.8) + 6;
+          const sp = 0.04 + rnd() * rnd() * 0.3;
+          const sv = sp_jet * (0.45 + rnd() * 0.75) + 6;
           const dx = jd.x + rs() * sp, dy = jd.y + rs() * sp * 0.7 + 0.12, dz = jd.z + rs() * sp;
           S.emit(nx, ny, nz, nv.x + dx * sv, nv.y + dy * sv, nv.z + dz * sv, 1.0 + rnd() * 1.4, 0.07 + rnd() * 0.07, 0.3 + rnd() * 0.45, 1, 0.45, 0.9, 0.15);
         }

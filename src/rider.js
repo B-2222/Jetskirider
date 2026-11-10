@@ -256,7 +256,7 @@ export class Rider {
     this.stand = damp(this.stand, standT, standT > this.stand ? 0.12 : 0.35, dt);
     this.leanBack = damp(this.leanBack, s.lean < 0 ? -s.lean : 0, 0.16, dt);
     this.leanFwd = damp(this.leanFwd, s.lean > 0 ? s.lean : 0, 0.16, dt);
-    const sideT = clamp(s.steer * (0.35 + 0.65 * speedK) + T.gLat * 0.1, -1, 1);
+    const sideT = clamp(s.steer * (0.35 + 0.65 * speedK) + T.gLat * 0.1 + Math.sign(s.steer) * (T.leanIn || 0) * 0.9, -1.8, 1.8);
     this.side = damp(this.side, sideT, 0.14, dt);
     this.headYaw = damp(this.headYaw, clamp(-s.steer * 0.5 - T.slip * 0.5, -0.9, 0.9), 0.15, dt);
     this.crouch = damp(this.crouch, clamp((T.gLong || 0) * 0.3, -0.3, 0.5), 0.2, dt);
@@ -271,13 +271,14 @@ export class Rider {
     hip.copy(A.seat);
     hip.y += 0.1 + st * 0.2 + lb * 0.1 + lf * 0.06;
     hip.x += -st * 0.04 - lb * 0.3 + lf * 0.14;
-    hip.z += sd * 0.13;
+    hip.z += sd * 0.12;
+    hip.y -= Math.min(Math.abs(sd), 1.8) * 0.03;
 
     // torso lean (from vertical, forward positive), keep the rider's body more
     // world-upright when the ski stands on its tail
     let lean = 0.42 + lf * 0.35 - lb * 0.1 + st * 0.12 + clamp(T.pitch, -0.3, 1.2) * 0.62 + this.crouch;
     lean = clamp(lean, -0.1, 1.25);
-    const rollIn = sd * 0.32;
+    const rollIn = sd * 0.3;
     const chest = this.chest;
     _c.set(Math.sin(lean), Math.cos(lean) * Math.cos(rollIn), Math.cos(lean) * Math.sin(rollIn));
     chest.copy(hip).addScaledVector(_c, DIM.torso);

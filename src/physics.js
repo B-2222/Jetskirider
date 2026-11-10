@@ -79,6 +79,8 @@ export class SkiPhysics {
     this.steerAngle = 0;
     this.rpmN = 0.1;
     this.pumpLoad = 1;
+    this.leanIn = 0;
+    this.powLag = 0;
     this.fhx = 1;
     this.fhz = 0;
     this.time = 0;
@@ -110,6 +112,11 @@ export class SkiPhysics {
     this.Ix = spec.mass * Math.pow(spec.B * 0.34, 2); // roll
     this.Iy = spec.mass * Math.pow(spec.L * 0.27, 2); // yaw
     this.Iz = spec.mass * Math.pow(spec.L * 0.265, 2); // pitch
+    const light = spec.style === 'spark';
+    this.leanRate = spec.leanRate ?? (light ? 1.5 : 0.7); // how fast the rider can roll the hull onto its side
+    this.unhook = spec.unhook ?? (light ? 0.28 : 0.36); // grip left once the V is out of the water
+    this.carve = spec.carve ?? (light ? 0.74 : 0.68); // full-lock demand as a fraction of grip
+    this.hopK = spec.hop ?? (light ? 1 : 0.5);
     this.nozzleL = { x: -0.4 * spec.L, y: -0.245, z: 0 };
     this.intakeL = { x: -0.17 * spec.L, y: -0.45, z: 0 };
     // Quadratic drag solved so that thrust == drag at the rated top speed.
@@ -192,9 +199,27 @@ export class SkiPhysics {
     let power = Math.pow(clamp((this.rpmN - 0.11) / 0.89, 0, 1), 1.7);
     {
       // throttle feathering near the tail-stand balance point
-      const lim = (c.lean < 0 ? sp.wheelieMax : 1.25) + 0.12;
+      const lim = (c.lean < 0 ? sp.wheelieMax : 0.5) + 0.12;
       power *= 0.12 + 0.88 * smoothstep(lim + 0.12, lim - 0.14, Math.asin(clamp(fy, -1, 1)) + 0.12 * (this.wx * rx + this.wy * ry + this.wz * rz));
     }
+
+    // Throttle hit with the trim up: the jet is aimed at the sky, the stern
+    // squats, the bow snaps up and the whole ski hops off the water.
+    this.powLag = damp(this.powLag, power, 0.22, dt);
+    const trimFrac = clamp(this.trim, 0, 1);
+    const hop = Math.max(0, power - this.powLag) * trimFrac * this.hopK * this.pumpLoad;
+
+    // Leaning in: holding full lock on the gas, the rider rolls the hull onto
+    // its side. Once the V bottom comes out of the water the hull unhooks and
+    // slides. Heavy skis take longer to tip; Shift (weight forward) helps.
+    const rollNow = -Math.asin(clamp(ry, -1, 1));
+    {
+      const want = Math.abs(c.steer) > 0.8 && thr > 0.4 && Math.abs(this.vx * fhx + this.vz * fhz) > 5;
+      const rate = want ? this.leanRate * (c.lean > 0 ? 2 : 1) * (1 + trimFrac * 0.5) : -2.5;
+      this.leanIn = clamp(this.leanIn + rate * dt, 0, 1);
+    }
+    const unhooked = smoothstep(0.36, 0.72, Math.abs(rollNow)) * upright;
+    const gripMul = 1 - (1 - this.unhook) * unhooked;
 
     let Fx = 0, Fy = -m * G, Fz = 0;
     let Tx = 0, Ty = 0, Tz = 0;
@@ -282,7 +307,7 @@ export class SkiPhysics {
       const axs = Math.abs(vp / vpk);
       // tyre-like: builds to a peak, holds, then lets go progressively
       let g = axs < 1 ? (2 * axs) / (1 + axs * axs) : 1 - (1 - sp.slide) * smoothstep(1.2, 4.5, axs);
-      const fl2 = -sign(vp) * (sp.grip * g + 0.045 * vp * vp) * gripSub * p.wl;
+      const fl2 = -sign(vp) * (sp.grip * gripMul * g + 0.045 * vp * vp) * gripSub * p.wl;
       addForce(ox, 0, oz, fu * fhx * m, 0, fu * fhz * m);
       // Lateral force keeps only part of its yaw lever: enough for the centre
       // of lateral resistance to matter (planted bow = tail-happy) without
@@ -352,9 +377,9 @@ export class SkiPhysics {
       const jetFrac = Math.sqrt(power * this.pumpLoad) * (c.brake > 0.05 ? 0.6 : 1);
       const au = Math.abs(ucm);
       const spdH = Math.hypot(this.vx, this.vz);
-      const rHook = Math.min((au + 5 * jetFrac) / sp.turnR, (sp.grip * 0.92) / Math.max(au, 1));
+      const rHook = Math.min((au + 5 * jetFrac) / sp.turnR, (sp.grip * this.carve) / Math.max(au, 1));
       const slipA = spdH > 2 ? Math.abs(Math.atan2(vcm, Math.abs(ucm) + 0.5)) : 0;
-      const loose = smoothstep(0.16, 0.55, slipA) * smoothstep(3, 7, spdH);
+      const loose = Math.max(smoothstep(0.16, 0.55, slipA), unhooked * 0.7) * smoothstep(3, 7, spdH);
       const rLoose = 0.8 + 1.7 * jetFrac;
       const rCmd = sN * (rHook + (Math.max(rLoose, rHook) - rHook) * loose);
       const auth = wetStern * upright * (0.16 * clamp(au / 6, 0, 1) + 0.84 * jetFrac);
@@ -365,11 +390,12 @@ export class SkiPhysics {
 
     // --- banking: the V hull + rider lean the ski into the turn -------------
     const aLat = yawRateR * Math.max(ucm, 0);
-    const bankT = clamp(Math.atan2(aLat, G) * 0.8 + sN * 0.1 * clamp(ucm / 8, 0, 1), -0.8, 0.8);
+    const bankT = clamp(Math.atan2(aLat, G) * 0.8 + sN * 0.1 * clamp(ucm / 8, 0, 1) + Math.sign(sN) * this.leanIn * 0.7, -0.98, 0.98);
     const roll = -Math.asin(clamp(ry, -1, 1));
     const wRoll = this.wx * fx + this.wy * fy + this.wz * fz;
     const bankK = (wet * 0.85 + 0.15 * Math.min(1, groundN * 3)) * upright;
-    const tb = this.Ix * (34 * (bankT - roll) - 8 * wRoll) * bankK;
+    const li = this.leanIn;
+    const tb = this.Ix * ((34 + 300 * li) * (bankT - roll) - (8 + 22 * li) * wRoll) * Math.max(bankK, 0.55 * li * upright * Math.min(1, wet * 4 + groundN * 4));
     Tx += fx * tb; Ty += fy * tb; Tz += fz * tb;
 
     // --- rider weight -------------------------------------------------------
@@ -392,6 +418,10 @@ export class SkiPhysics {
     if (ucm < -0.8) tp -= this.Iz * 15 * Math.min(-ucm - 0.8, 6) / 6 * wet * upright;
     // sliding hard sideways also loads the bow a little
     tp -= this.Iz * 1.4 * Math.min(Math.abs(vcm), 10) / 10 * wet * upright * clamp(1 - this.trim, 0, 1);
+    tp += this.Iz * 6 * hop * (wetStern * 0.8 + 0.2);
+    // not pulling back: the rider's weight keeps the bow from standing up
+    if (c.lean >= 0 && !air && pitchNow > 0.35) tp -= Math.min(this.Iz * (24 * (pitchNow - 0.35) + 5 * Math.max(wPitch, 0)), sp.leanTorque * 2.2);
+    Fy += m * 90 * hop * Math.min(1, wetStern + 0.25) * upright;
     Tx += rx * tp; Ty += ry * tp; Tz += rz * tp;
     if (air) {
       // a touch of body english in the air
@@ -456,6 +486,8 @@ export class SkiPhysics {
     T.trimAngle = trimAngle;
     T.steerAngle = delta;
     T.reverse = reverse;
+    T.leanIn = this.leanIn;
+    T.unhooked = unhooked;
     if (impact > T.impact) T.impact = impact;
     T.fx = fx; T.fy = fy; T.fz = fz; T.ux = ux; T.uy = uy; T.uz = uz; T.rx = rx; T.ry = ry; T.rz = rz;
     T.nozzle.x = this.px + nx; T.nozzle.y = this.py + ny; T.nozzle.z = this.pz + nz;

@@ -21,7 +21,7 @@ Then go to `http://localhost:8000`.
 | `A` `D` / `Left` `Right` | Steer (almost no steering off the throttle, like a real ski) |
 | `E` / `Q` | VTS trim up / down. Trim up for big rooster tails |
 | `Space` | Pull back: wheelies and tail stands |
-| `Shift` | Lean forward: plants the bow so the stern whips round |
+| `Shift` | Throw your weight in: tips the hull faster for slides, plants the bow |
 | `C` | Camera |
 | `R` | Reset to open water |
 | `T` / `V` | Change light / water |
