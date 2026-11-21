@@ -25,6 +25,8 @@ Then go to `http://localhost:8000`.
 | `C` | Camera |
 | `F` | First person camera |
 | `B` | Look behind you (toggle) |
+| `S` + `W` stopped | Launch control (RXP-X skis): hold both, let go of `S` to launch |
+| `N` | Rolling anti-lag on/off (600 turbo) |
 | `R` | Reset to open water |
 | `G` | Go to the wave zone (and back) |
 | `T` / `V` | Change light / water |

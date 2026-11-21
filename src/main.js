@@ -345,10 +345,11 @@ class Game {
     $('btnPause').addEventListener('click', () => this.openMenu());
     $('btnCam').addEventListener('click', () => this.nextCam());
     $('btnRear').addEventListener('click', () => this.toggleLookBack());
+    $('btnAls').addEventListener('click', () => this.toggleAls());
     $('btnMute').addEventListener('click', () => this.toggleMute());
     this.refreshMenu();
     this.ui = {
-      speed: $('speed'), rpmFill: $('rpmFill'), rpmVal: $('rpmVal'), trimVal: $('trimVal'), pumpVal: $('pumpVal'), modeVal: $('modeVal'),
+      speed: $('speed'), rpmFill: $('rpmFill'), rpmVal: $('rpmVal'), trimVal: $('trimVal'), pumpVal: $('pumpVal'), modeVal: $('modeVal'), boostVal: $('boostVal'),
       score: $('score'), best: $('best'), live: $('live'), liveName: $('liveName'), livePts: $('livePts'), combo: $('combo'), pops: $('pops'),
       banner: $('banner'), hint: $('hint'), flash: $('flash'),
       zoneDir: $('zoneDir'), zoneArrow: $('zoneArrow'), zoneDist: $('zoneDist'), zoneLbl: $('zoneLbl'), zoneKeyTip: $('zoneKey'),
@@ -423,10 +424,41 @@ class Game {
     this.audio.start(this.spec);
     this.input.enabled = true;
     this.canvas.focus?.();
+    this.syncSkiHud();
     if (!this.shownHint) {
       this.shownHint = true;
       this.showHint(this.mobile ? 'Hold GAS to go. No gas means no steering. TRIM + for rooster tails.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>E</kbd>/<kbd>Q</kbd> trim · <kbd>Space</kbd> pull back · hold <kbd>Shift</kbd> to slide', 9);
+      setTimeout(() => {
+        if (this.state === 'ride' && this.spec.launchControl && !this.shownLaunchHint) {
+          this.shownLaunchHint = true;
+          this.showLaunchHint();
+        }
+      }, 9500);
+    } else if (this.spec.launchControl && !this.shownLaunchHint) {
+      this.shownLaunchHint = true;
+      this.showLaunchHint();
     }
+  }
+
+  showLaunchHint() {
+    const als = this.spec.turbo ? (this.mobile ? ' ALS button: rolling anti-lag.' : ' <kbd>N</kbd> rolling anti-lag.') : '';
+    this.showHint((this.mobile ? 'Launch control: hold BRAKE + GAS stopped, let go of BRAKE to launch.' : 'Launch control: hold <kbd>S</kbd> + <kbd>W</kbd> stopped, let go of <kbd>S</kbd> to launch.') + als, 8);
+  }
+
+  // show the turbo / launch-control bits of the HUD for the current ski
+  syncSkiHud() {
+    const turbo = !!this.spec.turbo;
+    $('boostRow').hidden = !turbo;
+    $('btnAls').hidden = !turbo;
+    $('btnAls').classList.toggle('on', turbo && this.phys.als);
+    $('alsTag').hidden = !(turbo && this.phys.als);
+  }
+
+  toggleAls() {
+    if (!this.spec.turbo) return;
+    this.phys.als = !this.phys.als;
+    this.syncSkiHud();
+    this.showHint(this.phys.als ? 'Rolling anti-lag ON: boost stays up when you lift' : 'Rolling anti-lag OFF', 1.6);
   }
 
   openMenu() {
@@ -777,7 +809,8 @@ class Game {
     const rn = clamp((T.rpmN - 0.11) / 0.89, 0, 1.03);
     u.rpmFill.style.transform = `scaleX(${clamp(0.08 + rn * 0.92, 0, 1).toFixed(3)})`;
     const lim = this.audio.limiter || (T.rpmN > 1.02 && this.phys.ctrl.throttle > 0.5 ? 1 : 0);
-    const rpmShow = lim > 0.5 ? this.spec.maxRpm - (Math.sin(performance.now() * 0.069) > 0 ? 0 : 350) : this.spec.idleRpm + (this.spec.maxRpm - this.spec.idleRpm) * Math.min(rn, 1);
+    const rpmTop = T.lcArmed ? this.spec.idleRpm + (this.spec.maxRpm - this.spec.idleRpm) * (((this.spec.launchRpm ?? 0.62) - 0.11) / 0.89) : this.spec.maxRpm;
+    const rpmShow = lim > 0.5 ? rpmTop - (Math.sin(performance.now() * 0.069) > 0 ? 0 : 350) : this.spec.idleRpm + (this.spec.maxRpm - this.spec.idleRpm) * Math.min(rn, 1);
     set('rpm', u.rpmVal, String(Math.round(rpmShow / 50) * 50));
     u.rpmFill.classList.toggle('lim', lim > 0.5);
     const trim = this.phys.trim;
@@ -796,7 +829,8 @@ class Game {
       u.pumpVal.textContent = pump;
       u.pumpVal.classList.toggle('warn', pump === 'AIR');
     }
-    set('mode', u.modeVal, lim > 0.5 ? 'LIMIT' : T.reverse > 0.05 ? (T.u < 0.5 ? 'R' : 'iBR') : T.power > 0.02 ? 'F' : 'N');
+    set('mode', u.modeVal, T.lcArmed ? 'LAUNCH' : T.lcLaunch > 0 ? 'GO' : lim > 0.5 ? 'LIMIT' : T.reverse > 0.05 ? (T.u < 0.5 ? 'R' : 'iBR') : T.power > 0.02 ? 'F' : 'N');
+    if (this.spec.turbo) set('boost', u.boostVal, Math.round((T.boost || 0) * 32) + ' psi');
     set('score', u.score, this.tricks.score.toLocaleString());
     set('best', u.best, this.tricks.best.toLocaleString());
     const live = this.tricks.live;
@@ -841,6 +875,7 @@ class Game {
       if (inp.was('KeyC')) this.nextCam();
       if (inp.was('KeyF')) this.setCam(this.camMode === 4 ? 0 : 4);
       if (inp.was('KeyB')) this.toggleLookBack();
+      if (inp.was('KeyN')) this.toggleAls();
       if (inp.was('KeyR') && !this.wipe.on) this.respawn(true);
       if (inp.was('KeyG') && !this.wipe.on) {
         this.teleport(this.inZone ? 'lagoon' : 'zone');

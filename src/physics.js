@@ -79,6 +79,12 @@ export class SkiPhysics {
     this.steerAngle = 0;
     this.rpmN = 0.1;
     this.pumpLoad = 1;
+    this.boost = 0; // turbo boost 0..1 (turbo skis only)
+    this.als = false; // rolling anti-lag switched on
+    this.alsT = 0;
+    this.lcArmed = false; // launch control: on the line, revs held
+    this.lcLaunch = 0; // seconds of managed launch left
+    this.lcTrimSave = 0;
     this.leanIn = 0;
     this.powLag = 0;
     this.fhx = 1;
@@ -188,15 +194,38 @@ export class SkiPhysics {
     const rhx = -fhz, rhz = fhx; // right, horizontal
     const upright = smoothstep(0.0, 0.5, uy);
 
+    // --- launch control -----------------------------------------------------
+    // Brake + gas at a standstill: the iBR gate sits in neutral and the engine
+    // holds launch revs on the two-step. Let go of the brake to launch: the
+    // gate lifts with the revs already up (and boost built on a turbo), and
+    // the trim is held bow-down until the hull is on the plane.
+    const spdNow = Math.hypot(this.vx, this.vz);
+    if (sp.launchControl && c.brake > 0.5 && c.throttle > 0.5 && (spdNow < 2 || this.lcArmed)) {
+      if (!this.lcArmed) this.lcTrimSave = this.trim;
+      this.lcArmed = true;
+      this.lcLaunch = 0;
+    } else if (this.lcArmed) {
+      this.lcArmed = false;
+      if (c.throttle > 0.5 && c.brake <= 0.5) this.lcLaunch = 3.2;
+    }
+    if (this.lcLaunch > 0) {
+      this.lcLaunch -= dt;
+      if (c.throttle < 0.3 || spdNow > sp.top * 0.7) this.lcLaunch = 0;
+    }
+    const brake = this.lcArmed ? 0 : c.brake;
+
     // --- actuators ----------------------------------------------------------
     this.steerAngle = damp(this.steerAngle, c.steer * sp.steerMax, 0.045, dt);
     this.trim = clamp(this.trim + c.trimCmd * dt * 1.6, -1, 1);
+    if (this.lcArmed || this.lcLaunch > 1.4) this.trim = damp(this.trim, -1, 0.12, dt);
+    else if (this.lcLaunch > 0) this.trim = damp(this.trim, this.lcTrimSave, 0.35, dt);
     const trimAngle = this.trim > 0 ? this.trim * sp.trimUp : this.trim * sp.trimDown;
     const delta = this.steerAngle;
 
-    const thr = c.brake > 0.05 ? 0 : c.throttle;
-    const demand = Math.max(thr, c.brake * 0.75);
+    const thr = brake > 0.05 ? 0 : c.throttle;
+    const demand = Math.max(thr, brake * 0.75);
     let rpmT = 0.11 + 0.89 * demand;
+    if (this.lcArmed) rpmT = sp.launchRpm ?? 0.62;
     if (this.pumpLoad < 0.45 && demand > 0.15) rpmT = Math.min(1.05, rpmT + 0.3); // pump unloads, engine flares
     this.rpmN = damp(this.rpmN, rpmT, rpmT > this.rpmN ? 0.13 : 0.28, dt);
     let power = Math.pow(clamp((this.rpmN - 0.11) / 0.89, 0, 1), 1.7);
@@ -205,6 +234,22 @@ export class SkiPhysics {
       const lim = (c.lean < 0 ? sp.wheelieMax : 0.5) + 0.12;
       power *= 0.12 + 0.88 * smoothstep(lim + 0.12, lim - 0.14, Math.asin(clamp(fy, -1, 1)) + 0.12 * (this.wx * rx + this.wy * ry + this.wz * rz));
     }
+    // Turbo: power builds as the turbo spools. On the line the two-step and
+    // anti-lag build boost before you go; rolling anti-lag keeps it up when
+    // you lift, so the next stab of throttle hits straight away.
+    let alsActive = false;
+    if (sp.turbo) {
+      const rf = clamp((this.rpmN - 0.11) / 0.89, 0, 1);
+      let want = thr * smoothstep(0.25, 0.7, rf) * (0.5 + 0.5 * this.pumpLoad);
+      if (this.lcArmed) want = 0.95;
+      alsActive = this.lcArmed || (this.als && spdNow > 3 && thr < 0.4);
+      if (alsActive && !this.lcArmed) {
+        this.alsT += dt;
+        want = Math.max(want, 0.82 * (1 - smoothstep(3, 4.5, this.alsT)));
+      } else if (!this.lcArmed) this.alsT = 0;
+      this.boost = damp(this.boost, want, want > this.boost ? 0.75 : 0.3, dt);
+      power *= 0.5 + 0.5 * this.boost;
+    } else this.boost = 0;
 
     // Throttle hit with the trim up: the jet is aimed at the sky, the stern
     // squats, the bow snaps up and the whole ski hops off the water.
@@ -355,9 +400,12 @@ export class SkiPhysics {
 
     let thrust = 0;
     let reverse = 0;
-    if (c.brake > 0.05) {
+    if (this.lcArmed) {
+      // launch control: gate in neutral, no net thrust
+      thrust = 0;
+    } else if (brake > 0.05) {
       // iBR: the reverse gate drops over the jet and throws it forward + down
-      reverse = c.brake;
+      reverse = brake;
       const tr = sp.thrust * 0.62 * power * this.pumpLoad;
       const lim = ucm < -4 ? smoothstep(-7, -4, ucm) : 1;
       addForce(nx, ny, nz,
@@ -386,7 +434,7 @@ export class SkiPhysics {
     const sN = delta / sp.steerMax;
     const yawRateR = -(this.wx * ux + this.wy * uy + this.wz * uz);
     {
-      const jetFrac = Math.sqrt(power * this.pumpLoad) * (c.brake > 0.05 ? 0.6 : 1);
+      const jetFrac = Math.sqrt(power * this.pumpLoad) * (brake > 0.05 ? 0.6 : 1) * (this.lcArmed ? 0 : 1);
       const au = Math.abs(ucm);
       const spdH = Math.hypot(this.vx, this.vz);
       // trim down plants the bow and tightens the line; trim up frees it
@@ -550,6 +598,10 @@ export class SkiPhysics {
     T.trimAngle = trimAngle;
     T.steerAngle = delta;
     T.reverse = reverse;
+    T.boost = this.boost;
+    T.als = alsActive;
+    T.lcArmed = this.lcArmed;
+    T.lcLaunch = this.lcLaunch;
     T.leanIn = this.leanIn;
     T.unhooked = unhooked;
     if (impact > T.impact) T.impact = impact;

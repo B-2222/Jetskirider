@@ -107,39 +107,96 @@ function synthLoop(sr, rpm, ch, onLoad) {
   return { data: out, rpm: realRpm };
 }
 
-// Compressor surge after a hard lift: "stu-tu-tu-tu".
-function synthFlutter(sr) {
-  const len = Math.round(sr * 1.1);
+// Compressor surge after a hard lift: "chu-tu-tu-tu-tu". Each pulse is air
+// slamming back through the compressor wheel: a sharp resonant chuff with a
+// tiny whistle on top. They start fast and slow down as the surge winds out.
+function synthFlutter(sr, seed) {
+  const rng = makeRng(seed);
+  const len = Math.round(sr * 1.25);
   const d = new Float32Array(len);
-  const rng = makeRng(42);
-  let t = 0.015;
-  let gap = 0.033;
-  while (t < 1.0) {
-    const amp = Math.exp(-t / 0.3) * (0.8 + rng() * 0.4);
+  let t = 0.006;
+  let rate = 22 + rng() * 6;
+  const pulses = 9 + Math.floor(rng() * 5);
+  const res = (f, bw) => {
+    const w = (2 * Math.PI * f) / sr;
+    const r = Math.exp((-Math.PI * bw) / sr);
+    return { a1: 2 * r * Math.cos(w), a2: -r * r, g: (1 - r) * 2 * Math.sin(w) * 4 };
+  };
+  for (let k = 0; k < pulses && t < 1.12; k++) {
+    const amp = Math.pow(0.84, k) * (0.8 + rng() * 0.4) * (k === 0 ? 1.25 : 1);
+    const f0 = 820 + rng() * 280 - k * 26;
+    const R1 = res(f0, 170);
+    const R2 = res(f0 * 2.15, 420);
     const p0 = Math.floor(t * sr);
-    const n = Math.floor(sr * 0.03);
-    for (let i = 0; i < n && p0 + i < len; i++) {
+    const win = Math.floor(sr * 0.075);
+    let y1 = 0, y2 = 0, z1 = 0, z2 = 0;
+    const exLen = sr * (0.0035 + rng() * 0.0015);
+    for (let i = 0; i < win && p0 + i < len; i++) {
       const tt = i / sr;
-      d[p0 + i] += amp * ((rng() * 2 - 1) * Math.exp(-tt / 0.0055) * 0.9 + Math.sin(2 * Math.PI * 165 * tt) * Math.exp(-tt / 0.011) * 0.7);
+      const ex = i < exLen * 3 ? (rng() * 2 - 1) * Math.exp(-i / exLen) : 0;
+      const y = ex + R1.a1 * y1 + R1.a2 * y2;
+      y2 = y1;
+      y1 = y;
+      const z = ex + R2.a1 * z1 + R2.a2 * z2;
+      z2 = z1;
+      z1 = z;
+      // the little whistle: a fast downward chirp
+      const chirp = Math.sin(2 * Math.PI * (2600 * tt - 9000 * tt * tt)) * Math.exp(-tt / 0.012) * 0.12;
+      const thump = Math.sin(2 * Math.PI * 120 * tt) * Math.exp(-tt / 0.02) * 0.35;
+      d[p0 + i] += amp * (y * R1.g + z * R2.g * 0.45 + ex * 0.22 + chirp + thump);
     }
-    t += gap * (0.9 + rng() * 0.2);
-    gap *= 1.07;
+    t += (1 / rate) * (0.9 + rng() * 0.2);
+    rate *= 0.92;
   }
-  // band-limit: one-pole high-pass then low-pass
-  let hp = 0;
-  let prev = 0;
-  let lp = 0;
-  const ah = Math.exp((-2 * Math.PI * 280) / sr);
-  const al = 1 - Math.exp((-2 * Math.PI * 2600) / sr);
+  // band-limit and normalise
+  let hp = 0, prev = 0, lp = 0, pk = 0;
+  const ah = Math.exp((-2 * Math.PI * 180) / sr);
+  const al = 1 - Math.exp((-2 * Math.PI * 4200) / sr);
   for (let i = 0; i < len; i++) {
     hp = ah * (hp + d[i] - prev);
     prev = d[i];
     lp += (hp - lp) * al;
     d[i] = lp;
+    pk = Math.max(pk, Math.abs(lp));
+  }
+  for (let i = 0; i < len; i++) d[i] = (d[i] / (pk || 1)) * 0.92;
+  return d;
+}
+
+// Anti-lag bang: fuel lighting off in the exhaust. A crack, a low boom and a
+// crackling tail. Small ones are the pops in between.
+function synthBang(sr, seed, big) {
+  const rng = makeRng(seed);
+  const len = Math.round(sr * 0.4);
+  const d = new Float32Array(len);
+  const crackT = sr * (big ? 0.016 : 0.008);
+  const bodyT = sr * (big ? 0.05 : 0.025);
+  const boomT = sr * (big ? 0.11 : 0.05);
+  const f0 = big ? 88 + rng() * 20 : 120 + rng() * 40;
+  let lpC = 0, lpB = 0;
+  const aC = 1 - Math.exp((-2 * Math.PI * 4800) / sr);
+  const aB = 1 - Math.exp((-2 * Math.PI * 900) / sr);
+  for (let i = 0; i < len; i++) {
+    const n = rng() * 2 - 1;
+    lpC += (n - lpC) * aC;
+    lpB += (n - lpB) * aB;
+    const tt = i / sr;
+    const att = Math.min(1, i / (sr * 0.0004));
+    const crack = lpC * Math.exp(-i / crackT) * 1.3;
+    const body = lpB * Math.exp(-i / bodyT) * 2.2;
+    const boom = Math.sin(2 * Math.PI * f0 * tt * (1 - tt * 1.5)) * Math.exp(-i / boomT) * (big ? 0.9 : 0.4);
+    d[i] = att * (crack + body + boom);
+  }
+  // crackle: sparse clicks dying away
+  const clicks = big ? 14 : 5;
+  for (let k = 0; k < clicks; k++) {
+    const p0 = Math.floor(sr * (0.02 + Math.pow(rng(), 1.6) * (big ? 0.3 : 0.15)));
+    const a = (0.25 + rng() * 0.4) * (1 - p0 / len);
+    for (let i = 0; i < sr * 0.0025 && p0 + i < len; i++) d[p0 + i] += a * (rng() * 2 - 1) * Math.exp(-i / (sr * 0.0006));
   }
   let pk = 0;
   for (let i = 0; i < len; i++) pk = Math.max(pk, Math.abs(d[i]));
-  for (let i = 0; i < len; i++) d[i] = (d[i] / (pk || 1)) * 0.9;
+  for (let i = 0; i < len; i++) d[i] = Math.tanh((d[i] / (pk || 1)) * 1.4) * 0.9;
   return d;
 }
 
@@ -338,19 +395,40 @@ export class Audio {
     this.sc1 = sc1;
     this.sc2 = sc2;
     this.scG = scG;
-    const tw = ctx.createOscillator();
-    tw.type = 'sine';
+    // turbo: compressor whine (three partials with a slow wobble) and the
+    // intake whoosh, both following the turbo shaft speed
     const twG = ctx.createGain();
     twG.gain.value = 0;
-    tw.connect(twG).connect(master);
-    tw.start();
-    this.tw = tw;
+    twG.connect(master);
+    const twWob = ctx.createOscillator();
+    twWob.frequency.value = 5.3;
+    const wobG = ctx.createGain();
+    wobG.gain.value = 9; // cents
+    twWob.connect(wobG);
+    twWob.start();
+    this.tw = [];
+    for (const [mult, g] of [[1, 1], [2, 0.32], [0.5, 0.22]]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      const og = ctx.createGain();
+      og.gain.value = g;
+      o.connect(og).connect(twG);
+      wobG.connect(o.detune);
+      o.start();
+      this.tw.push({ o, mult });
+    }
     this.twG = twG;
-    this.whoosh = noise('bandpass', 2300, 0.9);
+    this.whoosh = noise('bandpass', 1500, 2.2);
     this.whoosh.g.connect(master);
-    const fb = ctx.createBuffer(1, Math.round(sr * 1.1), sr);
-    fb.getChannelData(0).set(synthFlutter(sr));
-    this.flutterBuf = fb;
+    const mkBuf = (data) => {
+      const b = ctx.createBuffer(1, data.length, sr);
+      b.getChannelData(0).set(data);
+      return b;
+    };
+    this.flutterBufs = [11, 23, 37, 51].map((seed) => mkBuf(synthFlutter(sr, seed)));
+    this.bangBufs = [1, 2, 3].map((seed) => mkBuf(synthBang(sr, seed, true)));
+    this.popBufs = [4, 5, 6, 7].map((seed) => mkBuf(synthBang(sr, seed, false)));
+    this.nextBang = 0;
 
     // --- water + air -------------------------------------------------------------
     this.rush = noise('lowpass', 420, 0.4);
@@ -471,12 +549,24 @@ export class Audio {
   flutter(amount) {
     const ctx = this.ctx;
     const src = ctx.createBufferSource();
-    src.buffer = this.flutterBuf;
-    src.playbackRate.value = 0.92 + Math.random() * 0.16;
+    src.buffer = this.flutterBufs[(Math.random() * this.flutterBufs.length) | 0];
+    src.playbackRate.value = 0.9 + Math.random() * 0.2;
     const g = ctx.createGain();
-    g.gain.value = 0.35 + amount * 0.45;
+    g.gain.value = 0.3 + amount * 0.5;
     src.connect(g).connect(this.master);
     src.start();
+  }
+
+  bang(at, big, amount) {
+    const ctx = this.ctx;
+    const bufs = big ? this.bangBufs : this.popBufs;
+    const src = ctx.createBufferSource();
+    src.buffer = bufs[(Math.random() * bufs.length) | 0];
+    src.playbackRate.value = 0.85 + Math.random() * 0.3;
+    const g = ctx.createGain();
+    g.gain.value = (big ? 0.55 : 0.32) * amount * (0.7 + Math.random() * 0.4);
+    src.connect(g).connect(this.master);
+    src.start(at);
   }
 
   // tele: physics telemetry, ctrl: rider controls, idle: menu (quieter)
@@ -490,7 +580,8 @@ export class Audio {
 
     // --- rpm + limiter ---------------------------------------------------------
     const frac = (tele.rpmN - 0.11) / 0.89;
-    const lim = smoothstep(1.005, 1.035, tele.rpmN) * smoothstep(0.4, 0.7, thr);
+    const lim = tele.lcArmed ? 1 : smoothstep(1.005, 1.035, tele.rpmN) * smoothstep(0.4, 0.7, thr);
+    if (sp.turbo) this.boost = tele.boost || 0;
     this.limiter = lim;
     const rpm = sp.idleRpm + (sp.maxRpm - sp.idleRpm) * clamp(frac, 0, 1);
     this.rpm = rpm;
@@ -526,7 +617,8 @@ export class Audio {
     this.engGain.gain.setTargetAtTime(base * (1 - cutDepth), t, 0.03);
     this.limAmp.gain.setTargetAtTime(base * cutDepth, t, 0.03);
     this.limPitch.gain.setTargetAtTime(lim * 0.035, t, 0.03);
-    this.lfo.frequency.setTargetAtTime(10.5 + Math.random() * 1.5, t, 0.1);
+    // the launch two-step stutters faster than the top-end limiter
+    this.lfo.frequency.setTargetAtTime(tele.lcArmed ? 15 + Math.random() * 2 : 10.5 + Math.random() * 1.5, t, 0.08);
     // more gurgle at idle and when sitting deep, almost none flat out
     this.gurAmp.gain.setTargetAtTime(base * (0.32 * (1 - rn) + 0.06) * (1 - open * 0.8), t, 0.1);
 
@@ -557,20 +649,33 @@ export class Audio {
 
     // --- turbo ---------------------------------------------------------------------------
     if (sp.turbo) {
-      const want = thr * smoothstep(0.3, 0.75, rn) * (0.45 + 0.55 * pl);
-      // shaft speed spools slowly and coasts down; boost pressure dumps on lift
-      this.shaft += (want - this.shaft) * Math.min(1, dt / (want > this.shaft ? 0.7 : 1.5));
-      this.boost += (want - this.boost) * Math.min(1, dt / (want > this.boost ? 0.55 : 0.18));
+      const boost = this.boost;
+      // shaft speed follows boost up and coasts down slowly
+      const prevShaft = this.shaft;
+      this.shaft += (boost - this.shaft) * Math.min(1, dt / (boost > this.shaft ? 0.22 : 1.6));
+      const rising = Math.max(0, (this.shaft - prevShaft) / Math.max(dt, 1e-3));
       this.flutterCool -= dt;
-      if (this.prevThr > 0.55 && thr < 0.3 && this.boost > 0.3 && this.flutterCool <= 0) {
-        this.flutter(this.boost);
-        this.boost *= 0.25;
-        this.flutterCool = 0.5;
+      if (this.prevThr > 0.55 && thr < 0.3 && boost > 0.3 && this.flutterCool <= 0) {
+        this.flutter(tele.als ? boost * 0.45 : boost);
+        this.flutterCool = 0.6;
       }
-      this.tw.frequency.setTargetAtTime(1500 + 5600 * this.shaft, t, 0.05);
-      this.twG.gain.setTargetAtTime(0.022 * this.shaft * (0.4 + 0.6 * this.boost) * (idle ? 0.3 : 1), t, 0.05);
-      this.whoosh.f.frequency.setTargetAtTime(1500 + 1600 * this.shaft, t, 0.05);
-      this.whoosh.g.gain.setTargetAtTime(0.09 * this.boost * L, t, 0.05);
+      const sh = this.shaft;
+      const f1 = 650 + 3500 * Math.pow(sh, 1.3);
+      for (const { o, mult } of this.tw) o.frequency.setTargetAtTime(f1 * mult, t, 0.04);
+      const spool = clamp(rising * 0.8, 0, 1);
+      this.twG.gain.setTargetAtTime((0.026 * Math.pow(sh, 1.5) * (0.35 + 0.65 * L) + 0.012 * spool) * (idle ? 0.3 : 1), t, 0.04);
+      this.whoosh.f.frequency.setTargetAtTime(700 + 2400 * sh, t, 0.05);
+      this.whoosh.g.gain.setTargetAtTime((0.08 * boost * (0.3 + 0.7 * L) + 0.07 * spool) * (idle ? 0.3 : 1), t, 0.05);
+      // anti-lag (two-step on the line, rolling ALS off throttle): bangs and pops
+      if (tele.als && !idle) {
+        const amt = 0.5 + 0.5 * boost;
+        if (this.nextBang < t) this.nextBang = t + 0.01;
+        while (this.nextBang < t + 0.12) {
+          const big = Math.random() < (tele.lcArmed ? 0.4 : 0.3);
+          this.bang(this.nextBang, big, amt);
+          this.nextBang += tele.lcArmed ? 0.055 + Math.random() * 0.07 : 0.07 + Math.random() * 0.15;
+        }
+      }
     } else {
       this.shaft = this.boost = 0;
       this.twG.gain.setTargetAtTime(0, t, 0.05);

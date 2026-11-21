@@ -18,7 +18,7 @@
   <!-- ===================== HUD ===================== -->
   <div id="hud" hidden>
     <div class="hud-top">
-      <div class="chip" id="skiChip"><span class="chip-brand">SEA-DOO</span><span id="skiName">SPARK TRIXX</span></div>
+      <div class="chip" id="skiChip"><span class="chip-brand">SEA-DOO</span><span id="skiName">SPARK TRIXX</span><span class="chip-tag" id="alsTag" hidden>ALS</span></div>
       <div class="score">
         <div class="score-row"><span class="lbl">SCORE</span><span class="val" id="score">0</span></div>
         <div class="score-row dim"><span class="lbl">BEST</span><span class="val" id="best">0</span></div>
@@ -26,6 +26,7 @@
       <div class="hud-btns">
         <button class="icon-btn" id="btnCam" title="Change camera (C)">CAM</button>
         <button class="icon-btn" id="btnRear" title="Look behind you (B)">REAR</button>
+        <button class="icon-btn" id="btnAls" title="Rolling anti-lag (N)" hidden>ALS</button>
         <button class="icon-btn" id="btnMute" title="Sound on/off (M)">SND</button>
         <button class="icon-btn" id="btnPause" title="Garage / pause (Esc)">MENU</button>
       </div>
@@ -50,6 +51,7 @@
         <div class="mini-row"><span class="lbl">TRIM</span><span class="val" id="trimVal">0</span></div>
         <div class="mini-row"><span class="lbl">PUMP</span><span class="val" id="pumpVal">LOADED</span></div>
         <div class="mini-row"><span class="lbl">MODE</span><span class="val" id="modeVal">N</span></div>
+        <div class="mini-row" id="boostRow" hidden><span class="lbl">BOOST</span><span class="val" id="boostVal">0 psi</span></div>
       </div>
     </div>
 
@@ -122,6 +124,8 @@
         <div><kbd>Shift</kbd></div><div>Slide. Hold while turning to break the hull loose (lean forward in the air)</div>
         <div><kbd>C</kbd> · <kbd>F</kbd></div><div>Change camera · first person</div>
         <div><kbd>B</kbd></div><div>Look behind you (toggle)</div>
+        <div><kbd>S</kbd> + <kbd>W</kbd> stopped</div><div>Launch control (RXP-X skis): hold both, let go of <kbd>S</kbd> to launch</div>
+        <div><kbd>N</kbd></div><div>Rolling anti-lag on/off (600 turbo)</div>
         <div><kbd>R</kbd></div><div>Reset to open water</div>
         <div><kbd>G</kbd></div><div>Go to the wave zone (and back)</div>
         <div><kbd>T</kbd> / <kbd>V</kbd></div><div>Change light / water</div>

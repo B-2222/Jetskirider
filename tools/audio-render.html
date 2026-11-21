@@ -3,7 +3,7 @@
 // Renders a scripted ride through the real Audio class with an OfflineAudioContext.
 import { Audio } from '../src/audio.js';
 import { skiById } from '../src/specs.js';
-window.render = async (skiId, secs = 11) => {
+window.render = async (skiId, secs = 13) => {
   const sr = 44100;
   const off = new OfflineAudioContext(1, sr * secs, sr);
   const RealAC = window.AudioContext;
@@ -17,7 +17,10 @@ window.render = async (skiId, secs = 11) => {
   const ctrl = { throttle: 0 };
   const dt = 1 / 60;
   let t = 0;
+  const turbo = !!skiById(skiId).turbo;
+  tele.boost = 0;
   const step = () => {
+    if (turbo) return stepTurbo();
     // script: idle, gas, airborne (pump dry -> limiter), land, lift (flutter), idle
     const thr = t < 1.5 ? 0 : t < 8 ? 1 : 0;
     const air = t > 5 && t < 6.6;
@@ -31,6 +34,27 @@ window.render = async (skiId, secs = 11) => {
     tele.wet = air ? 0 : 0.6;
     tele.airborne = air;
     tele.exposure = air ? 1 : 0;
+    a.update(tele, ctrl, thr * 0.4, false, dt);
+  };
+  // turbo script: idle, two-step on the line, launch, lift with anti-lag
+  // (bangs), back on it, lift without anti-lag (flutter), idle
+  const stepTurbo = () => {
+    const armed = t > 1.2 && t < 3.4;
+    const thr = armed ? 1 : t < 3.4 ? 0 : t < 6.5 ? 1 : t < 8.3 ? 0 : t < 10.3 ? 1 : 0;
+    const alsOn = t >= 6.5 && t < 8.3;
+    ctrl.throttle = thr;
+    const rT = armed ? 0.66 : 0.11 + 0.89 * thr;
+    tele.rpmN += (rT - tele.rpmN) * (1 - Math.exp(-dt / (rT > tele.rpmN ? 0.13 : 0.28)));
+    const rf = Math.max(0, Math.min(1, (tele.rpmN - 0.11) / 0.89));
+    let want = thr * Math.min(1, Math.max(0, (rf - 0.25) / 0.45));
+    if (armed) want = 0.95;
+    if (alsOn) want = Math.max(want, 0.82);
+    tele.boost += (want - tele.boost) * (1 - Math.exp(-dt / (want > tele.boost ? 0.75 : 0.3)));
+    tele.power = armed ? 0 : Math.pow(rf, 1.7) * (0.5 + 0.5 * tele.boost);
+    tele.speed += ((thr && !armed ? 40 : 0) - tele.speed) * dt * 0.3;
+    tele.wet = 0.6; tele.airborne = false; tele.exposure = 0; tele.pumpLoad = 1;
+    tele.lcArmed = armed;
+    tele.als = armed || alsOn;
     a.update(tele, ctrl, thr * 0.4, false, dt);
   };
   const n = Math.floor(secs / dt) - 2;
