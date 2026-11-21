@@ -7,6 +7,7 @@ export class Tricks {
   constructor(onEvent) {
     this.onEvent = onEvent; // (label, points, kind)
     this.zoneAt = null; // (x, z) -> 0..1 wave-zone strength
+    this.barrelAt = null; // (x, z) -> 0..1 how deep inside a barrel
     this.reset();
     this.best = 0;
     try {
@@ -23,6 +24,7 @@ export class Tricks {
     this.slide = { on: false, time: 0, yaw: 0, pts: 0, maxSlip: 0 };
     this.wheelie = { on: false, time: 0, pts: 0, max: 0 };
     this.air = { on: false, time: 0, pitch: 0, yaw: 0, roll: 0, maxH: 0 };
+    this.barrel = { on: false, time: 0, pts: 0, grace: 0 };
     this.lastYaw = null;
     this.live = '';
     this.livePts = 0;
@@ -134,6 +136,30 @@ export class Tricks {
       if (w.grace <= 0) {
         w.on = false;
         if (w.time > 0.6) this.award(w.max > 52 ? 'TAIL STAND' : 'WHEELIE', w.pts + (w.max > 52 ? 200 : 0));
+      }
+    }
+
+    // --- barrel ------------------------------------------------------------
+    const bz = this.barrelAt && onWater ? this.barrelAt(phys.px, phys.pz) : 0;
+    const br = this.barrel;
+    if (bz > 0.3 && T.speed > 4) {
+      if (!br.on) {
+        br.on = true;
+        br.time = 0;
+        br.pts = 0;
+      }
+      br.time += dt;
+      br.grace = 0.35;
+      br.pts += dt * (260 + 340 * bz);
+      if (br.time > 0.25) {
+        this.live = 'IN THE BARREL';
+        this.livePts = br.pts;
+      }
+    } else if (br.on) {
+      br.grace -= dt;
+      if (br.grace <= 0) {
+        br.on = false;
+        if (br.time > 0.5) this.award(br.time > 2.2 ? 'DEEP BARREL' : 'BARREL', br.pts + (br.time > 2.2 ? 800 : 200));
       }
     }
 

@@ -56,6 +56,7 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 .hud-btns { display: flex; gap: 6px; pointer-events: auto; }
 .icon-btn { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 7px 10px 6px; font-family: var(--display); font-weight: 600; letter-spacing: 0.12em; font-size: 14px; }
 .icon-btn:hover { border-color: var(--accent); }
+.icon-btn.on { border-color: var(--accent); color: var(--accent); }
 .icon-btn.off { color: var(--mist); text-decoration: line-through; }
 
 .trick-zone { position: absolute; left: 0; right: 0; top: 17%; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }

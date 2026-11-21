@@ -24,6 +24,7 @@ Then go to `http://localhost:8000`.
 | `Shift` | Slide: hold while turning to break the hull loose. Without it the ski carves |
 | `C` | Camera |
 | `F` | First person camera |
+| `B` | Look behind you (toggle) |
 | `R` | Reset to open water |
 | `G` | Go to the wave zone (and back) |
 | `T` / `V` | Change light / water |
@@ -35,7 +36,7 @@ Touch controls and gamepads work too.
 
 ## Wave zone
 
-Big groundswell rolls through a marked patch of open water east of the lagoon (follow the WAVE ZONE marker, press `G`, or pick it under START in the garage). Hit the faces flat out to launch, throw flat spins off the lip, and land straight for the clean-landing bonus.
+Breaking surf rolls through a marked patch of open water east of the lagoon: waves arrive in sets with calm gaps between, peak, then peel and barrel (follow the WAVE ZONE marker, press `G`, or pick it under START in the garage). Hit the faces flat out to launch, throw flat spins off the lip, ride the barrel under the curl, and land straight for the clean-landing bonus.
 
 ## The garage
 

@@ -357,7 +357,8 @@ export class Audio {
     this.hiss = noise('bandpass', 3000, 0.5);
     this.wind = noise('bandpass', 800, 0.35);
     this.lap = noise('lowpass', 240, 0.4);
-    for (const n of [this.rush, this.hiss, this.wind, this.lap]) n.g.connect(master);
+    this.surfRoar = noise('lowpass', 500, 0.5); // breaking waves
+    for (const n of [this.rush, this.hiss, this.wind, this.lap, this.surfRoar]) n.g.connect(master);
 
     this.ready = true;
     this.setSpec(spec);
@@ -584,6 +585,9 @@ export class Audio {
     this.hiss.g.gain.setTargetAtTime(clamp(sprayLevel, 0, 1) * 0.22, t, 0.06);
     this.wind.g.gain.setTargetAtTime(v * v * 0.14 + (tele.airborne ? 0.05 : 0), t, 0.1);
     this.wind.f.frequency.setTargetAtTime(450 + v * 1100, t, 0.1);
+    const roar = clamp(this.surfLevel || 0, 0, 1);
+    this.surfRoar.g.gain.setTargetAtTime(roar * 0.34, t, 0.2);
+    this.surfRoar.f.frequency.setTargetAtTime(330 + 600 * roar, t, 0.2);
     const lapping = (1 - smoothstep(1, 6, tele.speed)) * tele.wet;
     this.lap.g.gain.setTargetAtTime(lapping * (0.05 + 0.04 * Math.sin(t * 1.7) * Math.sin(t * 0.63)), t, 0.2);
   }

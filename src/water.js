@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { WAVES_GLSL } from './waves.js';
+import { SURF_GLSL } from './surf.js';
 import { SKY_GLSL, Sky } from './sky.js';
 import { WORLD_SIZE } from './terrain.js';
 
@@ -248,6 +249,9 @@ export class Ocean {
       uZoneA: { value: waves.uZA },
       uZoneB: { value: waves.uZB },
       uZone: { value: waves.uZone },
+      uSurfA: { value: waves.surf.uA },
+      uSurfB: { value: waves.surf.uB },
+      uSurfC: { value: waves.surf.uC },
       uTime: { value: 0 },
       uCenter: { value: new THREE.Vector2() },
       uHeightMap: { value: heightTex },
@@ -274,6 +278,7 @@ export class Ocean {
       side: THREE.DoubleSide,
       vertexShader: /* glsl */ `
         ${WAVES_GLSL}
+        ${SURF_GLSL}
         uniform vec2 uCenter;
         uniform sampler2D uHeightMap;
         uniform float uWorldSize;
@@ -286,6 +291,8 @@ export class Ocean {
           float att = 0.06 + 0.94 * smoothstep(0.2, 7.0, depth);
           vec3 d = gerstner(base, att);
           vec3 wp = vec3(base.x, 0.0, base.y) + d;
+          float sfoam;
+          wp.y += surfField(wp.xz, sfoam);
           vWorld = wp;
           vBase = base;
           vAtt = att;
@@ -294,6 +301,7 @@ export class Ocean {
       fragmentShader: /* glsl */ `
         ${WAVES_GLSL}
         ${SKY_GLSL}
+        ${SURF_GLSL}
         uniform sampler2D uHeightMap;
         uniform sampler2D uNormalMap;
         uniform sampler2D uFoamMap;
@@ -315,6 +323,16 @@ export class Ocean {
 
           // --- normal: analytic swell + scrolling ripple detail ---------------
           vec4 gn = gerstnerNormal(vBase, vAtt);
+          // breaking surf: slope by finite differences, plus its whitewater
+          float sFoam = 0.0, sTmp;
+          float sH = surfField(vWorld.xz, sFoam);
+          if (sH != 0.0 || sFoam > 0.0) {
+            float se = 0.25;
+            float sx = surfField(vWorld.xz + vec2(se, 0.0), sTmp);
+            float sz = surfField(vWorld.xz + vec2(0.0, se), sTmp);
+            gn.xz -= vec2(sx - sH, sz - sH) / se;
+          }
+          float sSteep = clamp(length(gn.xz) * 1.4, 0.0, 1.0);
           vec3 N = normalize(gn.xyz);
           vec2 xz = vWorld.xz;
           float t = uTime;
@@ -372,8 +390,11 @@ export class Ocean {
           float crest = clamp(gn.w * 2.2 + 0.25, 0.0, 1.0);
           float toSun = pow(max(dot(normalize(V.xz + 1e-4), -normalize(uSunDir.xz + 1e-4)), 0.0), 2.0);
           body += uShallow * uSunColor * 0.085 * crest * (0.35 + toSun) * smoothstep(1.5, 8.0, depth);
+          // light glowing through the thin top of a standing wave face
+          float glow = clamp(sH / 2.4, 0.0, 1.0) * sSteep;
+          body += (uShallow * 1.2 + vec3(0.05, 0.12, 0.1)) * glow * (0.35 + 0.65 * toSun) * uAmbient;
           // aerated water left behind by the jet wash: milky turquoise
-          float aer = clamp(wake.g, 0.0, 1.0);
+          float aer = clamp(wake.g + sFoam * 0.8, 0.0, 1.0);
           body = mix(body, (uShallow * 1.5 + vec3(0.2, 0.3, 0.3)) * uAmbient * sunK, aer * 0.55);
           body *= 1.0 - sh * 0.55;
 
@@ -386,6 +407,8 @@ export class Ocean {
           float f = wake.r;
           float foam = clamp((f * 1.3 - lace * 1.0) * 2.0, 0.0, 1.0);
           foam = max(foam, clamp((f - 1.0) * 1.4, 0.0, 1.0));
+          // whitewater rolling behind the break
+          foam = max(foam, clamp((sFoam * 1.6 - lace * 0.85) * 2.4, 0.0, 1.0));
           // shoreline wash
           float shore = 1.0 - smoothstep(0.0, 1.4, depth);
           float lap = 0.5 + 0.5 * sin(depth * 5.0 - t * 1.3 + lace * 5.0);
@@ -432,5 +455,6 @@ export class Ocean {
     u.uTime.value = time;
     u.uCenter.value.set(cx, cz);
     u.uFoamMap.value = this.foam.texture;
+    this.waves.surf.pack(time);
   }
 }

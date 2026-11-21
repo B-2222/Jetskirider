@@ -2,6 +2,9 @@
 // mesh and the CPU physics, so the hull really rides the waves you see.
 
 import { smoothstep } from './util.js';
+import { Surf, SURF, WAVE_ZONE } from './surf.js';
+
+export { WAVE_ZONE };
 
 const G = 9.81;
 
@@ -22,11 +25,11 @@ export const WAVE_COUNT = BASE.length;
 // The wave zone: a patch of open water where big groundswell rolls through.
 // Its waves fade in and out with distance from the centre, so they never
 // show up anywhere else on the map.
-export const WAVE_ZONE = { x: 900, z: -950, rIn: 190, rOut: 340, dir: 2.45 };
+// light background swell between the sets (the surf itself is in surf.js)
 const ZONE = [
-  { off: 0.0, len: 46, amp: 1.45 },
-  { off: 0.22, len: 32, amp: 0.55 },
-  { off: -0.18, len: 74, amp: 0.75 },
+  { off: 0.0, len: 46, amp: 0.4 },
+  { off: 0.22, len: 32, amp: 0.16 },
+  { off: -0.18, len: 74, amp: 0.22 },
 ];
 export const ZONE_COUNT = ZONE.length;
 
@@ -80,6 +83,7 @@ export class Waves {
     this.uZA = new Float32Array(this.zn * 4);
     this.uZB = new Float32Array(this.zn * 4);
     this.uZone = new Float32Array([WAVE_ZONE.x, WAVE_ZONE.z, WAVE_ZONE.rIn, WAVE_ZONE.rOut]);
+    this.surf = new Surf();
     // GLSL uniform payloads
     this.uA = new Float32Array(this.n * 4); // dx, dz, k, amp
     this.uB = new Float32Array(this.n * 4); // omega, phase, 0, 0
@@ -133,8 +137,8 @@ export class Waves {
   }
 
   // highest the surface can get here (for spray collision bounds)
-  maxHeight(x, z) {
-    let s = 0;
+  maxHeight(x, z, t = this.surf._t || 0) {
+    let s = this.zoneMask(x, z) > 0 ? this.surf.maxAmp(t) * 1.15 : 0;
     for (let i = 0; i < this.n; i++) s += this.amp[i];
     s *= this.scale;
     const m = this.zoneMask(x, z);
@@ -175,7 +179,7 @@ export class Waves {
       }
     }
     out.x = ox;
-    out.y = oy;
+    out.y = oy + this.surf.height(x + ox, z + oz, t);
     out.z = oz;
     return out;
   }
@@ -219,6 +223,25 @@ export class Waves {
         nz += this.zdz[i] * this.zk[i] * a * s;
       }
     }
+    // breaking surf (height-only, evaluated at the actual point)
+    const sf = this.surf.eval(x, z, t);
+    if (sf.h !== 0) {
+      const h0 = sf.h;
+      const e = 0.3;
+      h += h0;
+      const gx = (this.surf.height(x + e, z, t) - h0) / e;
+      const gz = (this.surf.height(x, z + e, t) - h0) / e;
+      nx -= gx;
+      nz -= gz;
+      // a travelling wave: the surface rises as the slope in front arrives
+      vy -= SURF.c * (gx * this.surf.dx + gz * this.surf.dz);
+    }
+    // water on a breaking wave surges forward with it: fastest at the crest,
+    // a full bore in the whitewater
+    const cur = sf.h > 0 ? sf.h * ((0.75 * SURF.c) / SURF.A0) : 0;
+    out.ux = this.surf.dx * cur;
+    out.uz = this.surf.dz * cur;
+    out.foam = sf.foam;
     out.h = h;
     out.vy = vy;
     out.nx = nx; // un-normalised surface normal = (nx, 1, nz)

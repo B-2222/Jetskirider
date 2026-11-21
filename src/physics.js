@@ -298,7 +298,9 @@ export class SkiPhysics {
       }
 
       // planing lift
-      const up = pvx * fhx + pvz * fhz;
+      // speed through the water (moving water on a breaking wave carries the hull)
+      const wcx = S.ux || 0, wcz = S.uz || 0;
+      const up = (pvx - wcx) * fhx + (pvz - wcz) * fhz;
       if (up > 0.5 && upright > 0.1) {
         const slope = -(S.nx * fhx + S.nz * fhz);
         let aoa = fy + p.rocker + 0.035 + slope * 0.8 * Math.min(1, 24 / up) - relVy / Math.max(up, 4);
@@ -308,7 +310,7 @@ export class SkiPhysics {
       addForce(ox, oy, oz, 0, this.mh * p.w * fyp, 0);
 
       // horizontal hydrodynamics (applied at CoM height: yaw torque only)
-      const vp = pvx * rhx + pvz * rhz;
+      const vp = (pvx - wcx) * rhx + (pvz - wcz) * rhz;
       const wetL = 0.3 + 0.7 * Math.sqrt(sub);
       let fu = -(0.16 * up + this.dragQ * up * Math.abs(up)) * wetL * p.w * 0.82;
       if (up < 0) fu *= 1.7;

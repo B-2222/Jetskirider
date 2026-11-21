@@ -10,6 +10,7 @@ import { makeNoiseTexture, makeWaterNormalTexture, makeHeightTexture } from './t
 import { Sky, TIMES } from './sky.js';
 import { Ocean, FoamField } from './water.js';
 import { Spray } from './particles.js';
+import { Breakers } from './breakers.js';
 import { SkiEffects } from './effects.js';
 import { JetskiModel } from './jetski.js';
 import { Rider } from './rider.js';
@@ -117,6 +118,8 @@ class Game {
 
     this.spray = new Spray({ max: coarse ? 9000 : 18000, noiseTex: this.noiseTex });
     this.scene.add(this.spray.mesh);
+    this.breakers = new Breakers({ waves: this.waves, ocean: this.ocean, sky: this.sky, spray: this.spray, foam: this.foam });
+    this.scene.add(this.breakers.mesh);
 
     // --- player ------------------------------------------------------------
     this.skiIndex = clamp(parseInt(store.get('ski', '0'), 10) || 0, 0, SKIS.length - 1);
@@ -133,6 +136,7 @@ class Game {
     this.buildSki();
     this.tricks = new Tricks((label, pts, kind, combo) => this.popTrick(label, pts, kind));
     this.tricks.zoneAt = (x, z) => this.waves.zoneMask(x, z);
+    this.tricks.barrelAt = (x, z) => this.waves.surf.barrelAt(x, z, this.phys.time);
     this.inZone = false;
 
     // --- state ---------------------------------------------------------------
@@ -340,6 +344,7 @@ class Game {
     $('btnHelpClose').addEventListener('click', () => ($('help').hidden = true));
     $('btnPause').addEventListener('click', () => this.openMenu());
     $('btnCam').addEventListener('click', () => this.nextCam());
+    $('btnRear').addEventListener('click', () => this.toggleLookBack());
     $('btnMute').addEventListener('click', () => this.toggleMute());
     this.refreshMenu();
     this.ui = {
@@ -440,6 +445,12 @@ class Game {
 
   nextCam() {
     this.setCam((this.camMode + 1) % 5);
+  }
+
+  toggleLookBack() {
+    this.lookBack = !this.lookBack;
+    $('btnRear').classList.toggle('on', this.lookBack);
+    this.showHint(this.lookBack ? 'Looking back' : 'Looking forward', 1.2);
   }
 
   setCam(mode) {
@@ -660,7 +671,7 @@ class Game {
     }
     // swing out to a rear three-quarter view when the rooster tail is up so you can see it
     c.rooster = damp(c.rooster || 0, clamp(this.effects.rooster * 1.6, 0, 1) * smoothstep(4, 12, spd), 0.9, dt);
-    const yaw = c.yaw + c.userYaw + c.rooster * 0.62;
+    const yaw = c.yaw + c.userYaw + c.rooster * 0.62 + (this.lookBack ? Math.PI : 0);
     const fx = Math.cos(yaw);
     const fz = -Math.sin(yaw);
 
@@ -683,17 +694,28 @@ class Game {
       const c0 = Math.cos(hy);
       const s0 = Math.sin(hy);
       // rotate the heading left for +hy (ski +Z is starboard)
-      const hx = p.fhx * c0 + p.fhz * s0;
-      const hz = p.fhz * c0 - p.fhx * s0;
-      const pitch = clamp(T.pitch, -0.6, 1.2) * 0.55 - 0.24;
+      let hx = p.fhx * c0 + p.fhz * s0;
+      let hz = p.fhz * c0 - p.fhx * s0;
+      let pitch = clamp(T.pitch, -0.6, 1.2) * 0.55 - 0.24;
+      if (this.lookBack) {
+        // turn round to look over your shoulder at the wake
+        hx = -p.fhx;
+        hz = -p.fhz;
+        pitch = -clamp(T.pitch, -0.6, 1.2) * 0.4 - 0.1;
+      }
       const dir = new THREE.Vector3(hx * Math.cos(pitch), Math.sin(pitch), hz * Math.cos(pitch));
-      eye.addScaledVector(dir, 0.05);
-      eye.y += 0.05;
+      eye.addScaledVector(dir, this.lookBack ? -0.05 : 0.05);
+      eye.y += this.lookBack ? 0.1 : 0.05;
       cam.position.copy(eye);
       cam.up.set(T.ux, T.uy, T.uz).lerp(new THREE.Vector3(0, 1, 0), 0.65).normalize();
       const prev = cam.quaternion.clone();
       cam.lookAt(this._v.copy(eye).add(dir));
-      if (!snap && this._fpWas) cam.quaternion.slerpQuaternions(prev, cam.quaternion, 1 - Math.exp(-dt * 16));
+      // smooth toward the new view (slerp from a copy: slerping a quaternion
+      // into itself froze the camera on its first direction)
+      if (!snap && this._fpWas) {
+        const target = cam.quaternion.clone();
+        cam.quaternion.copy(prev).slerp(target, 1 - Math.exp(-dt * 16));
+      }
       this._fpWas = true;
     } else if (this.camMode === 3) {
       // handlebar cam: rigidly on the ski, behind the rider's shoulders
@@ -818,6 +840,7 @@ class Game {
     if (this.state === 'ride') {
       if (inp.was('KeyC')) this.nextCam();
       if (inp.was('KeyF')) this.setCam(this.camMode === 4 ? 0 : 4);
+      if (inp.was('KeyB')) this.toggleLookBack();
       if (inp.was('KeyR') && !this.wipe.on) this.respawn(true);
       if (inp.was('KeyG') && !this.wipe.on) {
         this.teleport(this.inZone ? 'lagoon' : 'zone');
@@ -879,7 +902,7 @@ class Game {
       this.audio.slap(clamp((this.effects.smallImpact - 1.1) / 2.5, 0, 1));
     }
     const shallow = this.terrain.heightAt(p.px, p.pz) > -3;
-    const bound = shallow ? 1e9 : this.waves.maxHeight(p.px, p.pz) + 0.4;
+    const bound = shallow ? 1e9 : this.waves.maxHeight(p.px, p.pz, time) + 0.4;
     const waves = this.waves;
     const terrain = this.terrain;
     const tmp = this._d || (this._d = {});
@@ -889,6 +912,13 @@ class Game {
       const g = terrain.heightAt(x, z);
       return g > wy ? g : wy;
     }, bound, this.foam);
+    // breaking surf: lips, barrels, spray and whitewater foam (only nearby)
+    if (Math.hypot(p.px - WAVE_ZONE.x, p.pz - WAVE_ZONE.z) < 1100) this.breakers.update(dt, time, p, this.effects.density);
+    else {
+      this.breakers.mesh.visible = false;
+      this.breakers.roar = 0;
+    }
+    this.audio.surfLevel = this.breakers.roar;
     this.foam.update(p.px + p.vx * 0.8, p.pz + p.vz * 0.8, dt);
     this.buoys.update(dt, time, p);
 
@@ -964,7 +994,7 @@ class Game {
       if (inZone) {
         if (!this.shownZoneHint) {
           this.shownZoneHint = true;
-          this.showHint(this.mobile ? 'Hit the faces flat out. To spin, turn hard right at the lip. In the air you can only nudge the nose with PULL BACK / SLIDE.' : 'Hit the faces flat out. To spin, throw the ski into a hard turn right at the lip. In the air <kbd>Space</kbd> / <kbd>Shift</kbd> only nudge the nose.', 9);
+          this.showHint(this.mobile ? 'Waves come in sets. Hit the faces before they break to launch, or ride along under the curl for a barrel. To spin, turn hard at the lip.' : 'Waves come in sets. Hit the faces before they break to launch, or ride along the face under the curl for a barrel. To spin, throw the ski into a hard turn at the lip.', 9);
         }
       }
     }
