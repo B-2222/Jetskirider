@@ -439,8 +439,12 @@ class Game {
   }
 
   nextCam() {
-    this.camMode = (this.camMode + 1) % 4;
-    this.showHint(['Chase camera', 'Wide camera', 'Low action camera', 'Handlebar camera'][this.camMode], 1.6);
+    this.setCam((this.camMode + 1) % 5);
+  }
+
+  setCam(mode) {
+    this.camMode = mode;
+    this.showHint(['Chase camera', 'Wide camera', 'Low action camera', 'Handlebar camera', 'First person'][mode], 1.6);
   }
 
   showHint(html, secs = 4) {
@@ -629,6 +633,7 @@ class Game {
       { dist: 11.5, h: 4.6, look: 1.0, lookH: 0.6, fov: 58 },
       { dist: 4.4, h: 1.05, look: 1.6, lookH: 0.7, fov: 70 },
       { dist: 0, h: 0, look: 6, lookH: 0, fov: 78 },
+      { dist: 0, h: 0, look: 6, lookH: 0, fov: 80 },
     ];
     const m = modes[this.camMode];
     const spd = T.speed;
@@ -659,7 +664,38 @@ class Game {
     const fx = Math.cos(yaw);
     const fz = -Math.sin(yaw);
 
-    if (this.camMode === 3) {
+    const fp = this.camMode === 4 && !this.wipe.on;
+    this.rider.head.visible = !fp;
+    this.rider.torso.visible = !fp;
+    const near = fp ? 0.04 : 0.15;
+    if (cam.near !== near) {
+      cam.near = near;
+      cam.updateProjectionMatrix();
+    }
+    if (fp) {
+      // first person: at the rider's eyes. Looks where the ski is heading
+      // plus some of the rider's head turn into the corner, with the horizon
+      // steadied the way a real head does it (the body's lean is ignored).
+      const g = this.skiGroup;
+      const head = this.rider.head;
+      const eye = new THREE.Vector3().copy(head.position).applyMatrix4(g.matrixWorld);
+      const hy = this.rider.headYaw * 0.4;
+      const c0 = Math.cos(hy);
+      const s0 = Math.sin(hy);
+      // rotate the heading left for +hy (ski +Z is starboard)
+      const hx = p.fhx * c0 + p.fhz * s0;
+      const hz = p.fhz * c0 - p.fhx * s0;
+      const pitch = clamp(T.pitch, -0.6, 1.2) * 0.55 - 0.24;
+      const dir = new THREE.Vector3(hx * Math.cos(pitch), Math.sin(pitch), hz * Math.cos(pitch));
+      eye.addScaledVector(dir, 0.05);
+      eye.y += 0.05;
+      cam.position.copy(eye);
+      cam.up.set(T.ux, T.uy, T.uz).lerp(new THREE.Vector3(0, 1, 0), 0.65).normalize();
+      const prev = cam.quaternion.clone();
+      cam.lookAt(this._v.copy(eye).add(dir));
+      if (!snap && this._fpWas) cam.quaternion.slerpQuaternions(prev, cam.quaternion, 1 - Math.exp(-dt * 16));
+      this._fpWas = true;
+    } else if (this.camMode === 3) {
       // handlebar cam: rigidly on the ski, behind the rider's shoulders
       const g = this.skiGroup;
       const local = new THREE.Vector3(-0.55, 1.42, 0);
@@ -667,7 +703,9 @@ class Game {
       const look = new THREE.Vector3(8, 0.6, 0).applyMatrix4(g.matrixWorld);
       cam.up.set(T.ux, T.uy, T.uz).lerp(new THREE.Vector3(0, 1, 0), 0.5).normalize();
       cam.lookAt(look);
+      this._fpWas = false;
     } else {
+      this._fpWas = false;
       const dist = m.dist + spd * 0.055 + c.userPitch * 2 + c.rooster * 3.5;
       const h = m.h + c.userPitch * 5 + Math.max(0, T.pitch) * 1.2 + c.rooster * 0.6;
       const des = new THREE.Vector3(target.x - fx * dist, target.y + h, target.z - fz * dist);
@@ -779,6 +817,7 @@ class Game {
     if (inp.was('KeyH')) $('help').hidden = !$('help').hidden;
     if (this.state === 'ride') {
       if (inp.was('KeyC')) this.nextCam();
+      if (inp.was('KeyF')) this.setCam(this.camMode === 4 ? 0 : 4);
       if (inp.was('KeyR') && !this.wipe.on) this.respawn(true);
       if (inp.was('KeyG') && !this.wipe.on) {
         this.teleport(this.inZone ? 'lagoon' : 'zone');
@@ -925,7 +964,7 @@ class Game {
       if (inZone) {
         if (!this.shownZoneHint) {
           this.shownZoneHint = true;
-          this.showHint(this.mobile ? 'Hit the faces flat out. In the air: PULL BACK backflip, SLIDE front flip, STEER spin, STEER + SLIDE barrel roll. Let go to land.' : 'Hit the faces flat out. In the air: <kbd>Space</kbd> backflip · <kbd>Shift</kbd> front flip · <kbd>A</kbd><kbd>D</kbd> spin · <kbd>A</kbd><kbd>D</kbd> + <kbd>Shift</kbd> barrel roll. Let go to land.', 9);
+          this.showHint(this.mobile ? 'Hit the faces flat out. To spin, turn hard right at the lip. In the air you can only nudge the nose with PULL BACK / SLIDE.' : 'Hit the faces flat out. To spin, throw the ski into a hard turn right at the lip. In the air <kbd>Space</kbd> / <kbd>Shift</kbd> only nudge the nose.', 9);
         }
       }
     }

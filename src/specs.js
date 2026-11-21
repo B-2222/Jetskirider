@@ -23,7 +23,8 @@ export const SKIS = [
     trimUp: 21 * DEG,
     trimDown: 8 * DEG,
     steerMax: 25 * DEG,
-    grip: 15.5,
+    grip: 19,
+    gMax: 1.35, // hardest carve it can pull, in g
     slide: 0.4,
     sternBias: 0.9,
     leanTorque: 620,
@@ -56,7 +57,8 @@ export const SKIS = [
     trimUp: 9 * DEG,
     trimDown: 5 * DEG,
     steerMax: 24 * DEG,
-    grip: 15,
+    grip: 18,
+    gMax: 1.25, // hardest carve it can pull, in g
     slide: 0.42,
     sternBias: 0.9,
     leanTorque: 400,
@@ -89,6 +91,7 @@ export const SKIS = [
     trimDown: 6 * DEG,
     steerMax: 23 * DEG,
     grip: 24,
+    gMax: 1.35, // hardest carve it can pull, in g
     slide: 0.45,
     sternBias: 1.05,
     leanTorque: 330,
@@ -120,6 +123,7 @@ export const SKIS = [
     trimDown: 6 * DEG,
     steerMax: 23 * DEG,
     grip: 25,
+    gMax: 1.4, // hardest carve it can pull, in g
     slide: 0.44,
     sternBias: 1.0,
     leanTorque: 340,
@@ -151,6 +155,7 @@ export const SKIS = [
     trimDown: 7 * DEG,
     steerMax: 22 * DEG,
     grip: 36,
+    gMax: 1.85, // hardest carve it can pull, in g
     slide: 0.5,
     sternBias: 1.15,
     leanTorque: 330,
@@ -184,6 +189,7 @@ export const SKIS = [
     trimDown: 6 * DEG,
     steerMax: 22 * DEG,
     grip: 30,
+    gMax: 1.55, // hardest carve it can pull, in g
     slide: 0.46,
     sternBias: 1.15,
     leanTorque: 300,
@@ -215,6 +221,7 @@ export const SKIS = [
     trimDown: 7 * DEG,
     steerMax: 22 * DEG,
     grip: 38,
+    gMax: 1.75, // hardest carve it can pull, in g
     slide: 0.5,
     sternBias: 1.2,
     leanTorque: 330,

@@ -23,11 +23,12 @@ const DIM = {
   neck: 0.1,
 };
 
-// ellipse-section body loft along +Y
+// ellipse-section body loft along +Y, with UVs (u around from the front, v up)
 function bodyLoft(sections, colorFn) {
-  const seg = 20;
+  const seg = 28;
   const pos = [];
   const col = [];
+  const uv = [];
   const idx = [];
   const c = new THREE.Color();
   for (let i = 0; i < sections.length; i++) {
@@ -40,6 +41,7 @@ function bodyLoft(sections, colorFn) {
       const px = ox + Math.sign(ca) * Math.pow(Math.abs(ca), 0.8) * rx;
       const pz = Math.sign(sa) * Math.pow(Math.abs(sa), 0.8) * rz;
       pos.push(px, y, pz);
+      uv.push(k / seg, i / (sections.length - 1));
       if (colorFn) {
         colorFn(i / (sections.length - 1), a, c, y);
         col.push(c.r, c.g, c.b);
@@ -57,37 +59,160 @@ function bodyLoft(sections, colorFn) {
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   if (colorFn) g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
 }
 
-function limbGeo(r0, r1) {
-  const g = new THREE.CylinderGeometry(r1, r0, 1, 12, 1);
-  g.translate(0, 0.5, 0);
-  return g;
+// Muscle-shaped limb segment of unit length along +Y. profile: [t, radius]
+function limbGeo(profile) {
+  const pts = profile.map(([t, r]) => new THREE.Vector2(r, t));
+  pts.unshift(new THREE.Vector2(0.001, profile[0][0]));
+  pts.push(new THREE.Vector2(0.001, profile[profile.length - 1][0]));
+  return new THREE.LatheGeometry(pts, 16);
+}
+
+const hex = (c) => '#' + new THREE.Color(c).getHexString();
+
+function makeCanvasTex(w, h, draw) {
+  const cv = document.createElement('canvas');
+  cv.width = w;
+  cv.height = h;
+  draw(cv.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  t.wrapS = THREE.RepeatWrapping;
+  return t;
+}
+
+// Life vest: u = 0 (and 1) is the front centre, v runs up the body.
+function vestTexture(trim) {
+  return makeCanvasTex(512, 256, (g, w, h) => {
+    const Y = (v) => h * (1 - v);
+    g.fillStyle = hex(trim);
+    g.fillRect(0, 0, w, h);
+    // black side panels and shoulders
+    g.fillStyle = '#121418';
+    g.fillRect(w * 0.19, 0, w * 0.12, h);
+    g.fillRect(w * 0.69, 0, w * 0.12, h);
+    g.fillRect(0, 0, w, Y(0.86));
+    g.fillRect(0, Y(0.07), w, h);
+    // panel seams
+    g.strokeStyle = 'rgba(0,0,0,0.35)';
+    g.lineWidth = 3;
+    for (const x of [0.12, 0.38, 0.62, 0.88]) {
+      g.beginPath();
+      g.moveTo(w * x, Y(0.07));
+      g.lineTo(w * x, Y(0.86));
+      g.stroke();
+    }
+    // front zip
+    g.fillStyle = '#0b0c0e';
+    g.fillRect(0, 0, w * 0.012, h);
+    g.fillRect(w * 0.988, 0, w * 0.012, h);
+    // three straps with buckles across the front
+    for (const v of [0.2, 0.42, 0.64]) {
+      g.fillStyle = '#16181c';
+      g.fillRect(0, Y(v + 0.035), w * 0.17, h * 0.07);
+      g.fillRect(w * 0.83, Y(v + 0.035), w * 0.17, h * 0.07);
+      g.fillStyle = '#c9ced4';
+      g.fillRect(w * 0.035, Y(v + 0.05), w * 0.05, h * 0.1);
+      g.fillStyle = '#5c6168';
+      g.fillRect(w * 0.045, Y(v + 0.025), w * 0.03, h * 0.05);
+    }
+    // brand on the back and a small one on the chest
+    g.save();
+    g.fillStyle = '#ffffff';
+    g.font = 'italic 900 44px "Arial Black", Arial, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('SEA-DOO', w * 0.5, Y(0.55));
+    g.font = 'italic 800 20px "Arial Black", Arial, sans-serif';
+    g.fillText('SEA-DOO', w * 0.9, Y(0.8));
+    g.restore();
+  });
+}
+
+function shortsTexture(trim) {
+  return makeCanvasTex(256, 128, (g, w, h) => {
+    g.fillStyle = '#1a1d22';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = hex(trim);
+    g.globalAlpha = 0.9;
+    // angular print down each side
+    for (const x0 of [0.22, 0.72]) {
+      g.beginPath();
+      g.moveTo(w * (x0 - 0.05), 0);
+      g.lineTo(w * (x0 + 0.06), 0);
+      g.lineTo(w * (x0 + 0.02), h);
+      g.lineTo(w * (x0 - 0.09), h);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+    g.fillStyle = '#0d0f12';
+    g.fillRect(0, 0, w, h * 0.08);
+  });
+}
+
+// MX helmet shell. Sphere UVs: u = 0.5 faces +X (forward), v = 0 is the top.
+function helmetTexture(base, trim) {
+  return makeCanvasTex(512, 256, (g, w, h) => {
+    g.fillStyle = hex(base);
+    g.fillRect(0, 0, w, h);
+    // swooping accent stripes
+    g.fillStyle = hex(trim);
+    for (const s of [1, -1]) {
+      g.beginPath();
+      const cx = w * 0.5;
+      g.moveTo(cx + s * w * 0.06, h * 0.1);
+      g.quadraticCurveTo(cx + s * w * 0.22, h * 0.22, cx + s * w * 0.42, h * 0.58);
+      g.lineTo(cx + s * w * 0.36, h * 0.62);
+      g.quadraticCurveTo(cx + s * w * 0.18, h * 0.3, cx + s * w * 0.02, h * 0.16);
+      g.fill();
+    }
+    g.fillRect(w * 0.47, 0, w * 0.06, h * 0.32);
+    // black lower edge
+    g.fillStyle = '#121418';
+    g.fillRect(0, h * 0.8, w, h * 0.2);
+    // number on the back
+    g.fillStyle = '#121418';
+    g.font = 'italic 900 64px "Arial Black", Arial, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('7', w * 0.0 + 30, h * 0.42);
+    g.fillText('7', w - 30, h * 0.42);
+  });
 }
 
 export class Rider {
   constructor(colorway) {
     this.group = new THREE.Group();
     this.mats = [];
+    this.texs = [];
     const M = (o) => {
       const m = new THREE.MeshPhysicalMaterial({ roughness: 0.7, ...o });
       this.mats.push(m);
       return m;
     };
-    const vestCol = new THREE.Color(colorway.trim);
-    const mSuit = M({ color: 0x121417, roughness: 0.62 });
-    const mShorts = M({ color: 0x1b1e23, roughness: 0.85 });
-    const mVest = M({ color: 0xffffff, vertexColors: true, roughness: 0.6 });
-    const mGlove = M({ color: 0x0b0c0d, roughness: 0.8 });
-    const mBoot = M({ color: 0x0d0e10, roughness: 0.75 });
-    const mHelmet = M({ color: 0xf2f4f6, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 });
-    const mHelmetAcc = M({ color: colorway.trim, roughness: 0.2, clearcoat: 1 });
-    const mVisor = M({ color: 0x050608, roughness: 0.05, metalness: 0.6, clearcoat: 1 });
-    const mSkin = M({ color: 0xc58a62, roughness: 0.6 });
+    const tex = (t) => (this.texs.push(t), t);
+    const trim = colorway.trim;
+    const darkTrim = new THREE.Color(trim).getHSL({}).l < 0.25;
+    const helmetBase = darkTrim ? 0xeff2f5 : 0x15171b;
+    const mSuit = M({ color: 0x15171a, roughness: 0.55, sheen: 0.4, sheenColor: new THREE.Color(0x30343a), sheenRoughness: 0.6 });
+    const mShorts = M({ map: tex(shortsTexture(trim)), roughness: 0.85, side: THREE.DoubleSide });
+    const mVest = M({ map: tex(vestTexture(trim)), roughness: 0.6, clearcoat: 0.15 });
+    const mGlove = M({ color: 0x0c0d0f, roughness: 0.75, side: THREE.DoubleSide });
+    const mGloveAcc = M({ color: trim, roughness: 0.5 });
+    const mBoot = M({ color: 0x111216, roughness: 0.7 });
+    const mSole = M({ color: 0x050506, roughness: 0.95 });
+    const mHelmet = M({ map: tex(helmetTexture(helmetBase, trim)), roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.06 });
+    const mHelmetPlain = M({ color: helmetBase, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.06 });
+    const mAcc = M({ color: trim, roughness: 0.25, clearcoat: 1 });
+    const mBlack = M({ color: 0x0b0c0e, roughness: 0.6 });
+    const mLens = M({ color: 0xff8a3d, metalness: 1, roughness: 0.1, clearcoat: 1, side: THREE.DoubleSide });
 
     const mk = (geo, mat, parent = this.group) => {
       const m = new THREE.Mesh(geo, mat);
@@ -97,7 +222,7 @@ export class Rider {
       return m;
     };
 
-    // torso (oriented hip -> chest along +Y, front = +X)
+    // --- torso (hip -> chest along +Y, front = +X) -------------------------
     this.torso = new THREE.Group();
     this.group.add(this.torso);
     const T = DIM.torso;
@@ -105,97 +230,162 @@ export class Rider {
       bodyLoft([
         [-0.1, 0.085, 0.13],
         [-0.03, 0.105, 0.165],
-        [0.08, 0.1, 0.155],
+        [0.08, 0.098, 0.15],
         [0.2, 0.1, 0.15],
-        [0.34, 0.115, 0.175],
-        [T - 0.05, 0.11, 0.19],
-        [T + 0.02, 0.085, 0.16],
+        [0.34, 0.115, 0.178],
+        [T - 0.05, 0.112, 0.195],
+        [T + 0.02, 0.088, 0.165],
         [T + 0.06, 0.05, 0.07],
       ]),
       mSuit,
       this.torso
     );
-    const cBlack = new THREE.Color(0x111316);
-    const cWhite = new THREE.Color(0xe9edf0);
     mk(
-      bodyLoft(
-        [
-          [0.1, 0.115, 0.165],
-          [0.14, 0.132, 0.178],
-          [0.3, 0.15, 0.2],
-          [T - 0.07, 0.148, 0.212],
-          [T - 0.01, 0.125, 0.19],
-          [T + 0.025, 0.09, 0.135],
-        ],
-        (v, a, c, y) => {
-          const side = Math.abs(Math.sin(a));
-          c.copy(vestCol);
-          if (side > 0.86) c.copy(cBlack);
-          if (y > 0.2 && y < 0.24) c.copy(cBlack);
-          if (y > 0.33 && y < 0.36 && side < 0.8) c.copy(cWhite);
-          if (y > T - 0.03) c.copy(cBlack);
-        }
-      ),
+      bodyLoft([
+        [0.1, 0.118, 0.168],
+        [0.15, 0.134, 0.18],
+        [0.3, 0.152, 0.202],
+        [T - 0.07, 0.15, 0.214],
+        [T - 0.015, 0.128, 0.192],
+        [T + 0.025, 0.092, 0.138],
+      ]),
       mVest,
       this.torso
     );
-    // shorts over the hips
+    // vest collar
+    const collar = mk(new THREE.TorusGeometry(0.075, 0.015, 8, 24), mBlack, this.torso);
+    collar.rotation.x = Math.PI / 2;
+    collar.scale.set(1.15, 1.35, 0.8);
+    collar.position.set(0, T + 0.035, 0);
+    // board shorts over the hips
     mk(
       bodyLoft([
-        [-0.12, 0.09, 0.14],
-        [-0.04, 0.115, 0.175],
-        [0.07, 0.108, 0.165],
+        [-0.13, 0.093, 0.145],
+        [-0.05, 0.118, 0.178],
+        [0.05, 0.11, 0.17],
+        [0.1, 0.108, 0.166],
       ]),
       mShorts,
       this.torso
     );
 
-    // head
+    // --- head: MX helmet with goggles ---------------------------------------
     this.head = new THREE.Group();
     this.group.add(this.head);
-    const neck = mk(new THREE.CylinderGeometry(0.05, 0.055, 0.1, 10), mSkin, this.head);
+    const neck = mk(new THREE.CylinderGeometry(0.052, 0.06, 0.11, 12), mSuit, this.head);
     neck.position.y = -0.06;
-    const shell = mk(new THREE.SphereGeometry(0.132, 24, 18), mHelmet, this.head);
-    shell.scale.set(1.12, 1.0, 0.94);
-    shell.position.set(0.0, 0.07, 0);
-    const chin = mk(new THREE.SphereGeometry(0.1, 18, 12), mHelmet, this.head);
-    chin.scale.set(1.0, 0.62, 0.9);
-    chin.position.set(0.075, -0.01, 0);
-    const visor = mk(new THREE.SphereGeometry(0.134, 24, 12, 0, Math.PI * 2, Math.PI * 0.32, Math.PI * 0.27), mVisor, this.head);
-    visor.scale.set(1.13, 1.0, 0.95);
-    visor.position.set(0.004, 0.07, 0);
-    // only the front of the visor band should read as dark: cover the back with a shell stripe
-    const back = mk(new THREE.SphereGeometry(0.136, 24, 12, Math.PI * 0.5 + 0.9, Math.PI * 2 - 1.8, Math.PI * 0.3, Math.PI * 0.32), mHelmet, this.head);
-    back.scale.set(1.12, 1.0, 0.95);
-    back.position.set(0.0, 0.07, 0);
-    const stripe = mk(new THREE.TorusGeometry(0.128, 0.012, 6, 28, Math.PI), mHelmetAcc, this.head);
-    stripe.rotation.set(0, 0, 0);
-    stripe.scale.set(1.14, 1.04, 1);
-    stripe.position.set(0, 0.075, 0);
-    const peakG = new THREE.BoxGeometry(0.14, 0.012, 0.19);
-    const peak = mk(peakG, mHelmetAcc, this.head);
-    peak.position.set(0.15, 0.15, 0);
-    peak.rotation.z = -0.25;
+    const shell = mk(new THREE.SphereGeometry(0.135, 32, 22), mHelmet, this.head);
+    shell.scale.set(1.13, 1.0, 0.95);
+    shell.position.set(-0.005, 0.072, 0);
+    // chin bar sticking forward
+    const chin = mk(new THREE.SphereGeometry(0.1, 22, 14), mHelmetPlain, this.head);
+    chin.scale.set(1.2, 0.58, 0.82);
+    chin.position.set(0.095, -0.012, 0);
+    const vent = mk(new THREE.BoxGeometry(0.03, 0.045, 0.07), mBlack, this.head);
+    vent.position.set(0.205, -0.012, 0);
+    for (const s of [-1, 1]) {
+      const sv = mk(new THREE.BoxGeometry(0.02, 0.012, 0.03), mAcc, this.head);
+      sv.position.set(0.19, -0.04, s * 0.05);
+    }
+    // eye port, goggle frame and mirrored lens
+    const port = mk(new THREE.CylinderGeometry(0.136, 0.136, 0.07, 28, 1, true, 0.62, 1.9), mBlack, this.head);
+    port.scale.set(1.12, 1, 0.96);
+    port.position.set(-0.004, 0.068, 0);
+    const frame = mk(new THREE.CylinderGeometry(0.141, 0.141, 0.062, 28, 1, true, 0.72, 1.7), mBlack, this.head);
+    frame.scale.set(1.13, 1, 0.98);
+    frame.position.set(-0.002, 0.068, 0);
+    const lens = mk(new THREE.CylinderGeometry(0.1435, 0.1435, 0.046, 28, 1, true, 0.8, 1.54), mLens, this.head);
+    lens.scale.set(1.13, 1, 0.98);
+    lens.position.set(-0.002, 0.068, 0);
+    const strap = mk(new THREE.TorusGeometry(0.138, 0.009, 6, 36), mAcc, this.head);
+    strap.rotation.x = Math.PI / 2;
+    strap.scale.set(1.13, 0.96, 1);
+    strap.position.set(-0.008, 0.068, 0);
+    // peak: a gently curved plate over the eye port
+    {
+      const pg = new THREE.BoxGeometry(0.17, 0.008, 0.22, 6, 1, 8);
+      const pa = pg.attributes.position;
+      for (let i = 0; i < pa.count; i++) {
+        const x = pa.getX(i);
+        const z = pa.getZ(i);
+        pa.setY(i, pa.getY(i) - z * z * 1.6 + (x + 0.085) * 0.12);
+      }
+      pg.computeVertexNormals();
+      const peak = mk(pg, mHelmet, this.head);
+      peak.position.set(0.13, 0.168, 0);
+      peak.rotation.z = 0.1;
+    }
 
-    // limbs
-    const seg = (r0, r1, mat) => mk(limbGeo(r0, r1), mat);
-    const joint = (r, mat) => mk(new THREE.SphereGeometry(r, 12, 10), mat);
+    // --- limbs ----------------------------------------------------------------
+    const G = {
+      upper: limbGeo([[0, 0.054], [0.12, 0.058], [0.4, 0.056], [0.75, 0.047], [1, 0.042]]),
+      fore: limbGeo([[0, 0.044], [0.18, 0.05], [0.5, 0.044], [0.85, 0.035], [1, 0.033]]),
+      thigh: limbGeo([[0, 0.084], [0.2, 0.09], [0.55, 0.08], [0.85, 0.062], [1, 0.058]]),
+      shorts: limbGeo([[0, 0.096], [0.3, 0.098], [0.58, 0.092], [0.6, 0.08]]),
+      shin: limbGeo([[0, 0.056], [0.25, 0.062], [0.55, 0.05], [0.85, 0.041], [1, 0.039]]),
+      cuff: limbGeo([[0, 0.04], [0.2, 0.046], [1, 0.044]]),
+    };
+    for (const k of Object.keys(G)) G[k].userData.shared = true;
+    this.sharedGeo = Object.values(G);
+    const joint = (r, mat, sy = 1) => {
+      const m = mk(new THREE.SphereGeometry(r, 14, 10), mat);
+      m.scale.y = sy;
+      return m;
+    };
     this.arm = [];
     this.leg = [];
     for (let i = 0; i < 2; i++) {
+      // glove: fingers wrapped round the grip (grip axis = Z), back of hand
+      // on top, thumb underneath
+      const glove = new THREE.Group();
+      this.group.add(glove);
+      const fg = new THREE.CylinderGeometry(0.031, 0.031, 0.088, 18, 1, true, -1.0, 5.4);
+      fg.rotateX(Math.PI / 2);
+      mk(fg, mGlove, glove);
+      for (const z of [-0.03, -0.01, 0.01, 0.03]) {
+        const kn = mk(new THREE.TorusGeometry(0.031, 0.0085, 6, 14, 3.6), mGlove, glove);
+        kn.position.z = z;
+        kn.rotation.z = -1.4;
+      }
+      const back = mk(new THREE.SphereGeometry(0.05, 14, 10), mGlove, glove);
+      back.scale.set(0.95, 0.55, 0.95);
+      back.position.set(-0.032, 0.03, 0);
+      back.rotation.z = 0.7;
+      const knuckle = mk(new THREE.BoxGeometry(0.05, 0.012, 0.075), mGloveAcc, glove);
+      knuckle.position.set(-0.012, 0.046, 0);
+      knuckle.rotation.z = 0.5;
+      const thumb = mk(new THREE.CapsuleGeometry(0.011, 0.04, 4, 8), mGlove, glove);
+      thumb.position.set(-0.022, -0.03, (i === 0 ? 1 : -1) * 0.045);
+      thumb.rotation.set(Math.PI / 2, 0, 0.9);
       this.arm.push({
-        upper: seg(0.052, 0.043, mSuit),
-        fore: seg(0.042, 0.034, mSuit),
-        shoulder: joint(0.062, mSuit),
-        elbow: joint(0.044, mSuit),
-        hand: mk(new THREE.BoxGeometry(0.1, 0.05, 0.085), mGlove),
+        upper: mk(G.upper, mSuit),
+        fore: mk(G.fore, mSuit),
+        cuff: mk(G.cuff, mGlove),
+        shoulder: joint(0.064, mSuit, 1.1),
+        elbow: joint(0.045, mSuit),
+        glove,
       });
+      // boot
+      const boot = new THREE.Group();
+      this.group.add(boot);
+      const sole = mk(new THREE.BoxGeometry(0.29, 0.03, 0.112), mSole, boot);
+      sole.position.set(0.0, -0.033, 0);
+      const upper = mk(new THREE.CapsuleGeometry(0.047, 0.17, 4, 12), mBoot, boot);
+      upper.rotation.z = Math.PI / 2;
+      upper.scale.set(0.82, 1, 1.08);
+      upper.position.set(0.01, 0.006, 0);
+      const shaft = mk(new THREE.CylinderGeometry(0.048, 0.054, 0.13, 14), mBoot, boot);
+      shaft.position.set(-0.07, 0.05, 0);
+      const bstrap = mk(new THREE.BoxGeometry(0.06, 0.018, 0.118), mGloveAcc, boot);
+      bstrap.position.set(0.03, 0.04, 0);
+      bstrap.rotation.z = -0.35;
       this.leg.push({
-        thigh: seg(0.082, 0.06, mShorts),
-        shin: seg(0.056, 0.042, mSuit),
-        knee: joint(0.062, mSuit),
-        hipJ: joint(0.085, mShorts),
-        foot: mk(new THREE.BoxGeometry(0.26, 0.085, 0.1), mBoot),
+        thigh: mk(G.thigh, mSuit),
+        shorts: mk(G.shorts, mShorts),
+        shin: mk(G.shin, mSuit),
+        knee: joint(0.06, mSuit),
+        hipJ: joint(0.088, mShorts),
+        foot: boot,
       });
     }
 
@@ -211,11 +401,14 @@ export class Rider {
     this.ragdoll = false;
     this._hl = new THREE.Vector3();
     this._hr = new THREE.Vector3();
+    this._barQ = new THREE.Quaternion();
+    this._skiQi = new THREE.Quaternion();
   }
 
   dispose() {
     this.group.traverse((o) => o.geometry && o.geometry.dispose());
     for (const m of this.mats) m.dispose();
+    for (const t of this.texs) t.dispose();
   }
 
   place(mesh, a, b) {
@@ -328,12 +521,19 @@ export class Rider {
       hq.multiply(_q);
     }
 
+    // the bar's orientation in ski space, for the gloves
+    model.gripR.parent.getWorldQuaternion(this._barQ);
+    this._skiQi.copy(skiGroup.quaternion).invert();
+    this._barQ.premultiply(this._skiQi);
+
     // arms
     for (let i = 0; i < 2; i++) {
       const sgn = i === 0 ? -1 : 1;
       const arm = this.arm[i];
       const sh = new THREE.Vector3().copy(chest).addScaledVector(right, sgn * DIM.shoulder).addScaledVector(up, -0.045);
-      const hand = i === 0 ? hl : hr;
+      const grip = i === 0 ? hl : hr;
+      // the wrist sits behind and above the bar, over the back of the hand
+      const hand = new THREE.Vector3(-0.07, 0.035, 0).applyQuaternion(this._barQ).add(grip);
       const pole = new THREE.Vector3(-0.25, -0.75, sgn * 0.75);
       const el = new THREE.Vector3();
       this.ik(sh, hand, DIM.upper, DIM.fore, pole, el);
@@ -342,10 +542,13 @@ export class Rider {
       const wrist = new THREE.Vector3().copy(el).addScaledVector(_a, DIM.fore);
       this.place(arm.upper, sh, el);
       this.place(arm.fore, el, wrist);
+      const c0 = new THREE.Vector3().copy(wrist).addScaledVector(_a, -0.075);
+      const c1 = new THREE.Vector3().copy(wrist).addScaledVector(_a, 0.025);
+      this.place(arm.cuff, c0, c1);
       arm.shoulder.position.copy(sh);
       arm.elbow.position.copy(el);
-      arm.hand.position.copy(hand);
-      arm.hand.quaternion.copy(model.steer.quaternion);
+      arm.glove.position.copy(grip);
+      arm.glove.quaternion.copy(this._barQ);
     }
 
     // legs
@@ -365,6 +568,7 @@ export class Rider {
       _a.subVectors(ankle, kn).normalize();
       const an = new THREE.Vector3().copy(kn).addScaledVector(_a, DIM.shin);
       this.place(leg.thigh, hj, kn);
+      this.place(leg.shorts, hj, kn);
       this.place(leg.shin, kn, an);
       leg.knee.position.copy(kn);
       leg.hipJ.position.copy(hj);

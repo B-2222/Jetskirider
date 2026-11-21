@@ -23,18 +23,19 @@ Then go to `http://localhost:8000`.
 | `Space` | Pull back: wheelies and tail stands |
 | `Shift` | Slide: hold while turning to break the hull loose. Without it the ski carves |
 | `C` | Camera |
+| `F` | First person camera |
 | `R` | Reset to open water |
 | `G` | Go to the wave zone (and back) |
 | `T` / `V` | Change light / water |
 | `M` / `Esc` | Sound / garage |
 
-In the air: `Space` backflip, `Shift` front flip, `A`/`D` spin, `A`/`D` with `Shift` barrel roll. Let go and the rider levels the ski for the landing.
+There are no in-air trick controls: to spin, throw the ski into a hard turn right at the lip and the rotation carries through the air. In the air `Space` / `Shift` only shift the rider's weight to nudge the nose.
 
 Touch controls and gamepads work too.
 
 ## Wave zone
 
-Big groundswell rolls through a marked patch of open water east of the lagoon (follow the WAVE ZONE marker, press `G`, or pick it under START in the garage). Hit the faces flat out to launch, throw tricks, and land straight for the clean-landing bonus.
+Big groundswell rolls through a marked patch of open water east of the lagoon (follow the WAVE ZONE marker, press `G`, or pick it under START in the garage). Hit the faces flat out to launch, throw flat spins off the lip, and land straight for the clean-landing bonus.
 
 ## The garage
 
@@ -49,4 +50,4 @@ Spark Trixx, Spark 2up, GTI SE 170, GTR 230, RXP-X 325, RXT-X 325 and a 600 hp t
 - `src/jetski.js`, `src/rider.js`: lofted Sea-Doo hulls and an IK-posed rider.
 - `src/audio.js`: engine loops synthesised at start-up from three-cylinder firing pulses through fixed exhaust resonances, crossfaded by rpm and load. Wet-exhaust gurgle, intake roar, jet pump, supercharger whine, turbo spool and flutter, and a rev limiter when the pump runs dry.
 
-`tools/` holds headless test helpers: `node tools/physics-test.mjs trixx`, `node tools/wave-test.mjs trixx`, `node tools/trick-test.mjs trixx back`, and `node tools/audio-render.mjs <dir> rxp600` (renders a scripted ride to WAV).
+`tools/` holds headless test helpers: `node tools/physics-test.mjs trixx`, `node tools/wave-test.mjs trixx`, `node tools/spin-test.mjs trixx airsteer`, and `node tools/audio-render.mjs <dir> rxp600` (renders a scripted ride to WAV).

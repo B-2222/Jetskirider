@@ -162,25 +162,15 @@ export class Tricks {
       a.on = false;
       if (a.time > 0.55 && T.uy > 0.3) {
         // a rotation counts once it is ~80% done; the landing assist finishes it
-        const flips = Math.floor(Math.abs(a.pitch) / (Math.PI * 2) + 0.2);
+        // flat spins only: they are carried off the lip, never started in the air
         const spins = Math.floor(Math.abs(a.yaw) / Math.PI + 0.25);
-        const rolls = Math.floor(Math.abs(a.roll) / (Math.PI * 2) + 0.2);
         const parts = [];
         let pts = a.time * 180 + Math.min(a.maxH, 10) * 40;
-        if (flips > 0) {
-          parts.push((flips > 1 ? 'DOUBLE ' : '') + (a.pitch > 0 ? 'BACKFLIP' : 'FRONTFLIP'));
-          pts += 1500 * flips;
-        }
-        if (rolls > 0) {
-          parts.push((rolls > 1 ? 'DOUBLE ' : '') + 'BARREL ROLL');
-          pts += 1300 * rolls;
-        }
         if (spins > 0) {
-          parts.push(spins * 180 + (parts.length ? '' : ' SPIN'));
-          pts += 400 * spins;
+          parts.push(spins * 180 + ' SPIN');
+          pts += 450 * spins;
         }
         let label = parts.length ? parts.join(' + ') : a.time > 1.6 ? 'HUGE AIR' : a.time > 1.0 ? 'BIG AIR' : 'AIR';
-        if (parts.length > 1) pts *= 1.3;
         if (a.wave) {
           label = 'WAVE ' + label;
           pts *= 1.25;

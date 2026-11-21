@@ -155,7 +155,7 @@ export class Input {
     if (analog) {
       this.steerSmooth = damp(this.steerSmooth, steerT, 0.05, dt);
     } else {
-      const rate = steerT === 0 ? 5.5 : Math.sign(steerT) !== Math.sign(this.steerSmooth) && this.steerSmooth !== 0 ? 7 : 3.4 - 1.9 * clamp(speedN, 0, 1);
+      const rate = steerT === 0 ? 6.5 : Math.sign(steerT) !== Math.sign(this.steerSmooth) && this.steerSmooth !== 0 ? 8 : 5.2 - 1.8 * clamp(speedN, 0, 1);
       const diff = steerT - this.steerSmooth;
       this.steerSmooth += clamp(diff, -rate * dt, rate * dt);
     }
