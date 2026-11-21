@@ -371,3 +371,47 @@ export class Buoys {
     }
   }
 }
+
+// Inflatable start arch at the wave zone entrance. yaw = direction you ride through it.
+export function buildZoneArch(x, z, yaw) {
+  const g = new THREE.Group();
+  const orange = new THREE.MeshPhysicalMaterial({ color: 0xff6a13, roughness: 0.45, clearcoat: 0.4 });
+  const white = new THREE.MeshPhysicalMaterial({ color: 0xf3f5f7, roughness: 0.5 });
+  const span = 16;
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, -1, -span / 2),
+    new THREE.Vector3(0, 5.5, -span / 2 + 0.6),
+    new THREE.Vector3(0, 8.2, 0),
+    new THREE.Vector3(0, 5.5, span / 2 - 0.6),
+    new THREE.Vector3(0, -1, span / 2),
+  ]);
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 64, 0.85, 14, false), orange);
+  tube.castShadow = true;
+  g.add(tube);
+  for (const s of [-1, 1]) {
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.7, 1.2, 18), white);
+    base.position.set(0, 0, s * span / 2);
+    g.add(base);
+  }
+  const tex = canvasTexture(1024, 192, (c, w, h) => {
+    c.fillStyle = '#0b1b26';
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = '#ff6a13';
+    c.fillRect(0, h - 18, w, 18);
+    c.fillRect(0, 0, w, 10);
+    c.fillStyle = '#ffffff';
+    c.font = 'italic 900 118px "Arial Black", "Helvetica Neue", Arial, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText('WAVE ZONE', w / 2, h / 2 + 4);
+  });
+  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, toneMapped: true });
+  const banner = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 1.8), mat);
+  banner.position.set(0, 6.3, 0);
+  banner.rotation.y = -Math.PI / 2; // readable from the approach side
+  g.add(banner);
+  g.position.set(x, 0, z);
+  // arch plane faces the ride direction: local X is the way through
+  g.rotation.y = yaw;
+  return g;
+}

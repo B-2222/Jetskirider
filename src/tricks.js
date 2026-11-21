@@ -6,6 +6,7 @@ import { wrapAngle } from './util.js';
 export class Tricks {
   constructor(onEvent) {
     this.onEvent = onEvent; // (label, points, kind)
+    this.zoneAt = null; // (x, z) -> 0..1 wave-zone strength
     this.reset();
     this.best = 0;
     try {
@@ -145,6 +146,7 @@ export class Tricks {
         a.pitch = a.yaw = a.roll = 0;
         a.maxH = 0;
         a.y0 = phys.py;
+        a.wave = this.zoneAt ? this.zoneAt(phys.px, phys.pz) > 0.4 : false;
       }
       a.time += dt;
       // integrate body rates
@@ -159,20 +161,35 @@ export class Tricks {
     } else if (a.on) {
       a.on = false;
       if (a.time > 0.55 && T.uy > 0.3) {
-        const flips = Math.round(Math.abs(a.pitch) / (Math.PI * 2));
-        const spins = Math.round(Math.abs(a.yaw) / Math.PI);
-        const rolls = Math.round(Math.abs(a.roll) / (Math.PI * 2));
-        let label = a.time > 1.6 ? 'HUGE AIR' : a.time > 1.0 ? 'BIG AIR' : 'AIR';
-        let pts = a.time * 180 + a.maxH * 40;
+        // a rotation counts once it is ~80% done; the landing assist finishes it
+        const flips = Math.floor(Math.abs(a.pitch) / (Math.PI * 2) + 0.2);
+        const spins = Math.floor(Math.abs(a.yaw) / Math.PI + 0.25);
+        const rolls = Math.floor(Math.abs(a.roll) / (Math.PI * 2) + 0.2);
+        const parts = [];
+        let pts = a.time * 180 + Math.min(a.maxH, 10) * 40;
         if (flips > 0) {
-          label = (flips > 1 ? 'DOUBLE ' : '') + (a.pitch > 0 ? 'BACKFLIP' : 'FRONTFLIP');
+          parts.push((flips > 1 ? 'DOUBLE ' : '') + (a.pitch > 0 ? 'BACKFLIP' : 'FRONTFLIP'));
           pts += 1500 * flips;
-        } else if (rolls > 0) {
-          label = 'BARREL ROLL';
+        }
+        if (rolls > 0) {
+          parts.push((rolls > 1 ? 'DOUBLE ' : '') + 'BARREL ROLL');
           pts += 1300 * rolls;
-        } else if (spins > 0) {
-          label = spins * 180 + ' AIR SPIN';
+        }
+        if (spins > 0) {
+          parts.push(spins * 180 + (parts.length ? '' : ' SPIN'));
           pts += 400 * spins;
+        }
+        let label = parts.length ? parts.join(' + ') : a.time > 1.6 ? 'HUGE AIR' : a.time > 1.0 ? 'BIG AIR' : 'AIR';
+        if (parts.length > 1) pts *= 1.3;
+        if (a.wave) {
+          label = 'WAVE ' + label;
+          pts *= 1.25;
+        }
+        // stomped it: level and straight on touchdown
+        const clean = Math.abs(T.roll) < 0.25 && T.pitch > -0.2 && T.pitch < 0.45 && Math.abs(T.slip) < 0.35;
+        if (clean && (parts.length || a.time > 1.0)) {
+          pts *= 1.2;
+          this.onEvent('CLEAN LANDING', 0, 'note', this.combo);
         }
         this.award(label, pts);
       }

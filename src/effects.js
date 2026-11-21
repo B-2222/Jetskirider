@@ -248,6 +248,7 @@ export class SkiEffects {
       this.impactFlag = im;
       T.impact = 0;
     } else if (T.impact > 0) {
+      this.smallImpact = T.impact;
       T.impact = 0;
     }
     this.sprayLevel = clamp(level, 0, 1);

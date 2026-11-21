@@ -222,7 +222,8 @@ export const SKIS = [
     idleRpm: 1900,
     maxRpm: 9000,
     cyl: 3,
-    supercharged: true,
+    supercharged: false,
+    turbo: true,
     stats: { speed: 1.0, accel: 1.0, grip: 1.0, tricks: 0.3 },
     colorways: [
       { name: 'Carbon / Acid', hull: 0x0b0c0e, deck: 0x15171a, accent: 0xc6ff1a, seat: 0x101114, trim: 0xc6ff1a },

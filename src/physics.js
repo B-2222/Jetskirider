@@ -436,19 +436,39 @@ export class SkiPhysics {
     if (c.lean >= 0 && !air && pitchNow > 0.35) tp -= Math.min(this.Iz * (24 * (pitchNow - 0.35) + 5 * Math.max(wPitch, 0)), sp.leanTorque * 2.2);
     // At real speed the rider is braced and working the ski flat: without it
     // a 150 km/h hull would kite or stuff its nose on the first bit of chop.
-    const stab = c.lean === 0 ? smoothstep(17, 32, Math.abs(ucm)) * upright : 0;
+    const stab = c.lean === 0 && !air ? smoothstep(17, 32, Math.abs(ucm)) * upright : 0;
     if (stab > 0) {
       tp += clamp(this.Iz * (20 * (0.05 - pitchNow) - 7 * wPitch), -sp.leanTorque * 3, sp.leanTorque * 3) * stab;
-      if (air) {
-        const tr = this.Ix * clamp(-10 * roll - 4 * wRoll, -30, 30) * stab;
+    }
+    if (air) {
+      // In the air the rider throws the ski around. Each input asks for a
+      // rotation rate, so tricks are controllable on any ski:
+      //   pull back = backflip, weight forward = front flip,
+      //   steer = spin, steer + weight forward = barrel roll.
+      // Let go and the rider levels the ski for the landing once it is
+      // roughly upright again.
+      const light = sp.style === 'spark';
+      const flipR = sp.flipRate ?? (light ? 6.4 : 4.6);
+      const spinR = sp.spinRate ?? (light ? 6.2 : 4.8);
+      const rollR = sp.rollRate ?? (light ? 6.6 : 5.2);
+      const K = 9;
+      const rollMode = c.lean > 0.5 && Math.abs(sN) > 0.3;
+      const level = smoothstep(0.12, 0.5, uy);
+      if (rollMode) {
+        tp = -this.Iz * 3 * wPitch;
+        const tr = this.Ix * K * (Math.sign(sN) * rollR - wRoll);
         Tx += fx * tr; Ty += fy * tr; Tz += fz * tr;
+      } else {
+        tp = c.lean !== 0 ? this.Iz * K * (-c.lean * flipR - wPitch) : this.Iz * (7 * (0.06 - pitchNow) - 4 * wPitch) * level;
+        const tr = this.Ix * (11 * -roll - 5 * wRoll) * level;
+        Tx += fx * tr; Ty += fy * tr; Tz += fz * tr;
+        if (Math.abs(sN) > 0.15) {
+          const ts = this.Iy * K * (sN * spinR - yawRateR);
+          Tx -= ux * ts; Ty -= uy * ts; Tz -= uz * ts;
+        }
       }
     }
     Tx += rx * tp; Ty += ry * tp; Tz += rz * tp;
-    if (air) {
-      // a touch of body english in the air
-      Ty += -sN * this.Iy * 1.6;
-    }
 
     // --- aero + angular damping --------------------------------------------
     const spd = Math.hypot(this.vx, this.vy, this.vz);

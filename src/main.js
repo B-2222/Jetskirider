@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import { clamp, lerp, damp, smoothstep, wrapAngle } from './util.js';
-import { Waves, SEA_STATES } from './waves.js';
+import { Waves, SEA_STATES, WAVE_ZONE } from './waves.js';
 import { Terrain, World } from './terrain.js';
 import { SKIS } from './specs.js';
 import { SkiPhysics } from './physics.js';
@@ -13,7 +13,7 @@ import { Spray } from './particles.js';
 import { SkiEffects } from './effects.js';
 import { JetskiModel } from './jetski.js';
 import { Rider } from './rider.js';
-import { buildTerrainMesh, buildVegetation, buildRampMesh, Buoys } from './scenery.js';
+import { buildTerrainMesh, buildVegetation, buildRampMesh, buildZoneArch, Buoys } from './scenery.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { Tricks } from './tricks.js';
@@ -39,6 +39,13 @@ const store = {
 };
 
 const SPAWN = { x: 0, z: -150, yaw: -Math.PI / 2 };
+// wave zone entry: downwave of the swell, pointing into it
+const ZONE_IN = (() => {
+  const hx = -Math.cos(WAVE_ZONE.dir);
+  const hz = -Math.sin(WAVE_ZONE.dir);
+  const r = WAVE_ZONE.rOut + 60;
+  return { x: WAVE_ZONE.x - hx * r, z: WAVE_ZONE.z - hz * r, yaw: Math.atan2(-hz, hx), hx, hz };
+})();
 const FIXED = 1 / 240;
 
 class Game {
@@ -106,6 +113,7 @@ class Game {
     for (const r of this.world.ramps) this.scene.add(buildRampMesh(this.world, r));
     this.buoys = new Buoys(this.world, this.makeBuoyList());
     this.scene.add(this.buoys.group);
+    this.scene.add(buildZoneArch(ZONE_IN.x + ZONE_IN.hx * 30, ZONE_IN.z + ZONE_IN.hz * 30, ZONE_IN.yaw));
 
     this.spray = new Spray({ max: coarse ? 9000 : 18000, noiseTex: this.noiseTex });
     this.scene.add(this.spray.mesh);
@@ -123,7 +131,9 @@ class Game {
     this.input = new Input($('touch'));
     this.audio = new Audio();
     this.buildSki();
-    this.tricks = new Tricks((label, pts, kind, combo) => this.popTrick(label, pts, combo));
+    this.tricks = new Tricks((label, pts, kind, combo) => this.popTrick(label, pts, kind));
+    this.tricks.zoneAt = (x, z) => this.waves.zoneMask(x, z);
+    this.inZone = false;
 
     // --- state ---------------------------------------------------------------
     this.state = 'menu';
@@ -183,6 +193,11 @@ class Game {
       const x = 60 + Math.cos(a) * rad;
       const z = 120 + Math.sin(a) * rad;
       if (this.terrain.heightAt(x, z) < -2) list.push({ x, z, color: i % 2 ? red : yel });
+    }
+    // big orange markers around the wave zone
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      list.push({ x: WAVE_ZONE.x + Math.cos(a) * (WAVE_ZONE.rOut + 15), z: WAVE_ZONE.z + Math.sin(a) * (WAVE_ZONE.rOut + 15), color: 0xff6a13, scale: 1.7 });
     }
     return list;
   }
@@ -303,6 +318,11 @@ class Game {
       this.seaIndex = i;
       this.applySea();
     });
+    this.spotIndex = 0;
+    seg($('segSpot'), [{ name: 'Lagoon' }, { name: 'Wave zone' }], () => this.spotIndex, (i) => {
+      this.spotIndex = i;
+      this.teleport(i === 1 ? 'zone' : 'lagoon');
+    });
     seg($('segTime'), TIMES, () => this.timeIndex, (i) => {
       this.timeIndex = i;
       this.applyTime();
@@ -326,6 +346,7 @@ class Game {
       speed: $('speed'), rpmFill: $('rpmFill'), rpmVal: $('rpmVal'), trimVal: $('trimVal'), pumpVal: $('pumpVal'), modeVal: $('modeVal'),
       score: $('score'), best: $('best'), live: $('live'), liveName: $('liveName'), livePts: $('livePts'), combo: $('combo'), pops: $('pops'),
       banner: $('banner'), hint: $('hint'), flash: $('flash'),
+      zoneDir: $('zoneDir'), zoneArrow: $('zoneArrow'), zoneDist: $('zoneDist'), zoneLbl: $('zoneLbl'), zoneKeyTip: $('zoneKey'),
     };
     this.uiCache = {};
   }
@@ -379,7 +400,8 @@ class Game {
       cols.appendChild(b);
     });
     $('mColorName').textContent = s.colorways[cwI].name;
-    for (const id of ['segSea', 'segTime']) {
+    if (this.spotIndex !== undefined) this.spotIndex = this.waves.zoneMask(this.phys.px, this.phys.pz) > 0.05 || Math.hypot(this.phys.px - ZONE_IN.x, this.phys.pz - ZONE_IN.z) < 200 ? 1 : 0;
+    for (const id of ['segSpot', 'segSea', 'segTime']) {
       const el = $(id);
       [...el.children].forEach((b, i) => b.setAttribute('aria-pressed', i === el._get() ? 'true' : 'false'));
     }
@@ -427,10 +449,10 @@ class Game {
     this.hintTimer = secs;
   }
 
-  popTrick(label, pts, combo) {
+  popTrick(label, pts, kind) {
     const el = document.createElement('div');
-    el.className = 'pop';
-    el.innerHTML = `${label}<b>+${pts}</b>`;
+    el.className = 'pop' + (kind === 'note' ? ' note' : '');
+    el.innerHTML = kind === 'note' ? label : `${label}<b>+${pts.toLocaleString()}</b>`;
     const pops = this.ui.pops;
     while (pops.children.length > 2) pops.firstChild.remove();
     for (const c of pops.children) c.style.marginTop = (parseFloat(c.style.marginTop || '0') + 44) + 'px';
@@ -694,7 +716,10 @@ class Game {
     set('speed', u.speed, String(Math.round(T.speed * 3.6)));
     const rn = clamp((T.rpmN - 0.11) / 0.89, 0, 1.03);
     u.rpmFill.style.transform = `scaleX(${clamp(0.08 + rn * 0.92, 0, 1).toFixed(3)})`;
-    set('rpm', u.rpmVal, String(Math.round((this.spec.idleRpm + (this.spec.maxRpm - this.spec.idleRpm) * rn) / 50) * 50));
+    const lim = this.audio.limiter || (T.rpmN > 1.02 && this.phys.ctrl.throttle > 0.5 ? 1 : 0);
+    const rpmShow = lim > 0.5 ? this.spec.maxRpm - (Math.sin(performance.now() * 0.069) > 0 ? 0 : 350) : this.spec.idleRpm + (this.spec.maxRpm - this.spec.idleRpm) * Math.min(rn, 1);
+    set('rpm', u.rpmVal, String(Math.round(rpmShow / 50) * 50));
+    u.rpmFill.classList.toggle('lim', lim > 0.5);
     const trim = this.phys.trim;
     const lit = Math.round(trim * 4);
     if (cch.trim !== lit) {
@@ -711,7 +736,7 @@ class Game {
       u.pumpVal.textContent = pump;
       u.pumpVal.classList.toggle('warn', pump === 'AIR');
     }
-    set('mode', u.modeVal, T.reverse > 0.05 ? (T.u < 0.5 ? 'R' : 'iBR') : T.power > 0.02 ? 'F' : 'N');
+    set('mode', u.modeVal, lim > 0.5 ? 'LIMIT' : T.reverse > 0.05 ? (T.u < 0.5 ? 'R' : 'iBR') : T.power > 0.02 ? 'F' : 'N');
     set('score', u.score, this.tricks.score.toLocaleString());
     set('best', u.best, this.tricks.best.toLocaleString());
     const live = this.tricks.live;
@@ -755,6 +780,10 @@ class Game {
     if (this.state === 'ride') {
       if (inp.was('KeyC')) this.nextCam();
       if (inp.was('KeyR') && !this.wipe.on) this.respawn(true);
+      if (inp.was('KeyG') && !this.wipe.on) {
+        this.teleport(this.inZone ? 'lagoon' : 'zone');
+        this.showHint(this.inZone ? 'Back to the lagoon' : 'Wave zone. Ride into the swell flat out.', 2.2);
+      }
     } else if (this.state === 'menu') {
       if (inp.was('ArrowRight')) this.selectSki(this.skiIndex + 1);
       if (inp.was('ArrowLeft')) this.selectSki(this.skiIndex - 1);
@@ -801,14 +830,17 @@ class Game {
 
     // --- effects -----------------------------------------------------------
     this.effects.impactFlag = 0;
+    this.effects.smallImpact = 0;
     this.effects.update(dt, p, time);
     if (this.effects.impactFlag > 2.4) {
       const s = clamp((this.effects.impactFlag - 2) / 9, 0.1, 1);
       this.audio.splash(s);
       this.cam.shake = Math.max(this.cam.shake, s);
+    } else if (this.effects.smallImpact > 1.3 && T.speed > 4) {
+      this.audio.slap(clamp((this.effects.smallImpact - 1.1) / 2.5, 0, 1));
     }
     const shallow = this.terrain.heightAt(p.px, p.pz) > -3;
-    const bound = shallow ? 1e9 : this.waveBound() + 0.4;
+    const bound = shallow ? 1e9 : this.waves.maxHeight(p.px, p.pz) + 0.4;
     const waves = this.waves;
     const terrain = this.terrain;
     const tmp = this._d || (this._d = {});
@@ -823,6 +855,7 @@ class Game {
 
     // --- rules -------------------------------------------------------------
     if (this.state === 'ride') {
+      this.updateZone();
       if (this.wipe.on) this.updateWipeout(dt);
       else {
         this.tricks.update(dt, p);
@@ -860,17 +893,66 @@ class Game {
     }
 
     if (this.state === 'ride') this.updateHUD(dt);
-    this.audio.update(T, this.effects.sprayLevel, this.state !== 'ride');
+    this.audio.update(T, p.ctrl, this.effects.sprayLevel, this.state !== 'ride', dt);
     if (!this.noRender) this.renderer.render(this.scene, this.camera);
     if (!this.fixedQuality) this.adaptQuality(dt);
     this.frames = (this.frames || 0) + 1;
   }
 
-  waveBound() {
-    const w = this.waves;
-    let s = 0;
-    for (let i = 0; i < w.n; i++) s += w.amp[i];
-    return s * w.scale;
+  // ----------------------------------------------------------- wave zone
+  teleport(where) {
+    const spot = where === 'zone' ? ZONE_IN : SPAWN;
+    this.phys.reset(spot.x, spot.z, spot.yaw);
+    this.phys.trim = 0;
+    this.safe.x = spot.x;
+    this.safe.z = spot.z;
+    this.safe.yaw = spot.yaw;
+    this.foam.clear();
+    this.spray.clear();
+    this.tricks.lastYaw = null;
+    for (let i = 0; i < 120; i++) this.phys.step(FIXED);
+    this.syncSki();
+    this.snapCamera();
+    this.cam.orbit = this.cam.yaw + 0.5;
+  }
+
+  updateZone() {
+    const p = this.phys;
+    const m = this.waves.zoneMask(p.px, p.pz);
+    const inZone = this.inZone ? m > 0.25 : m > 0.45;
+    if (inZone !== this.inZone) {
+      this.inZone = inZone;
+      if (inZone) {
+        if (!this.shownZoneHint) {
+          this.shownZoneHint = true;
+          this.showHint(this.mobile ? 'Hit the faces flat out. In the air: PULL BACK backflip, SLIDE front flip, STEER spin, STEER + SLIDE barrel roll. Let go to land.' : 'Hit the faces flat out. In the air: <kbd>Space</kbd> backflip · <kbd>Shift</kbd> front flip · <kbd>A</kbd><kbd>D</kbd> spin · <kbd>A</kbd><kbd>D</kbd> + <kbd>Shift</kbd> barrel roll. Let go to land.', 9);
+        }
+      }
+    }
+    // marker pointing at the zone when you are away from it
+    const el = this.ui.zoneDir;
+    const dx = WAVE_ZONE.x - p.px;
+    const dz = WAVE_ZONE.z - p.pz;
+    const d = Math.hypot(dx, dz) - WAVE_ZONE.rIn;
+    const show = this.state === 'ride' && !this.wipe.on;
+    const inside = d <= 120;
+    if (el.hidden === show) el.hidden = !show;
+    if (el.classList.contains('inside') !== inside) {
+      el.classList.toggle('inside', inside);
+      this.ui.zoneLbl.textContent = inside ? 'IN THE WAVE ZONE' : 'WAVE ZONE';
+      this.ui.zoneKeyTip.title = inside ? 'Back to the lagoon' : 'Go to the wave zone';
+    }
+    if (show && !inside) {
+      const cam = this.camera;
+      cam.getWorldDirection(this._v);
+      const ang = Math.atan2(dx * this._v.z - dz * this._v.x, dx * this._v.x + dz * this._v.z);
+      this.ui.zoneArrow.style.transform = `rotate(${(ang * 180) / Math.PI}deg)`;
+      const txt = d > 950 ? (d / 1000).toFixed(1) + ' km' : Math.round(d / 10) * 10 + ' m';
+      if (this.uiCache.zone !== txt) {
+        this.uiCache.zone = txt;
+        this.ui.zoneDist.textContent = txt;
+      }
+    }
   }
 
   adaptQuality(dt) {

@@ -19,6 +19,17 @@ const BASE = [
 
 export const WAVE_COUNT = BASE.length;
 
+// The wave zone: a patch of open water where big groundswell rolls through.
+// Its waves fade in and out with distance from the centre, so they never
+// show up anywhere else on the map.
+export const WAVE_ZONE = { x: 900, z: -950, rIn: 190, rOut: 340, dir: 2.45 };
+const ZONE = [
+  { off: 0.0, len: 46, amp: 1.45 },
+  { off: 0.22, len: 32, amp: 0.55 },
+  { off: -0.18, len: 74, amp: 0.75 },
+];
+export const ZONE_COUNT = ZONE.length;
+
 export const SEA_STATES = [
   { id: 'glass', name: 'Glass', scale: 0.12, wind: 0.25 },
   { id: 'chop', name: 'Light chop', scale: 0.5, wind: 0.6 },
@@ -48,6 +59,27 @@ export class Waves {
       this.amp[i] = b.amp;
       this.phase[i] = i * 1.7;
     }
+    // zone swell
+    this.zn = ZONE.length;
+    this.zdx = new Float32Array(this.zn);
+    this.zdz = new Float32Array(this.zn);
+    this.zk = new Float32Array(this.zn);
+    this.zw = new Float32Array(this.zn);
+    this.zamp = new Float32Array(this.zn);
+    this.zphase = new Float32Array(this.zn);
+    for (let i = 0; i < this.zn; i++) {
+      const z = ZONE[i];
+      const d = WAVE_ZONE.dir + z.off;
+      this.zdx[i] = Math.cos(d);
+      this.zdz[i] = Math.sin(d);
+      this.zk[i] = (Math.PI * 2) / z.len;
+      this.zw[i] = Math.sqrt(G * this.zk[i]);
+      this.zamp[i] = z.amp;
+      this.zphase[i] = 0.9 + i * 2.3;
+    }
+    this.uZA = new Float32Array(this.zn * 4);
+    this.uZB = new Float32Array(this.zn * 4);
+    this.uZone = new Float32Array([WAVE_ZONE.x, WAVE_ZONE.z, WAVE_ZONE.rIn, WAVE_ZONE.rOut]);
     // GLSL uniform payloads
     this.uA = new Float32Array(this.n * 4); // dx, dz, k, amp
     this.uB = new Float32Array(this.n * 4); // omega, phase, 0, 0
@@ -77,6 +109,37 @@ export class Waves {
       this.uB[i * 4] = this.w[i];
       this.uB[i * 4 + 1] = this.phase[i];
     }
+    if (!this.uZA) return;
+    const zs = this.zoneScale();
+    for (let i = 0; i < this.zn; i++) {
+      this.uZA[i * 4] = this.zdx[i];
+      this.uZA[i * 4 + 1] = this.zdz[i];
+      this.uZA[i * 4 + 2] = this.zk[i];
+      this.uZA[i * 4 + 3] = this.zamp[i] * zs;
+      this.uZB[i * 4] = this.zw[i];
+      this.uZB[i * 4 + 1] = this.zphase[i];
+    }
+  }
+
+  // keep the swell from looping over itself when the sea state is rough too
+  zoneScale() {
+    return Math.min(1, Math.max(0.7, 1.3 - 0.3 * this.scale));
+  }
+
+  // 0 outside the wave zone, 1 in its heart
+  zoneMask(x, z) {
+    const d = Math.hypot(x - WAVE_ZONE.x, z - WAVE_ZONE.z);
+    return 1 - smoothstep(WAVE_ZONE.rIn, WAVE_ZONE.rOut, d);
+  }
+
+  // highest the surface can get here (for spray collision bounds)
+  maxHeight(x, z) {
+    let s = 0;
+    for (let i = 0; i < this.n; i++) s += this.amp[i];
+    s *= this.scale;
+    const m = this.zoneMask(x, z);
+    if (m > 0) for (let i = 0; i < this.zn; i++) s += this.zamp[i] * this.zoneScale() * m;
+    return s;
   }
 
   attenuation(x, z) {
@@ -98,6 +161,18 @@ export class Waves {
       ox -= this.dx[i] * a * s;
       oz -= this.dz[i] * a * s;
       oy += a * c;
+    }
+    const zm = this.zoneMask(x, z);
+    if (zm > 0) {
+      const za = zm * this.zoneScale() * (att / this.scale || 0);
+      for (let i = 0; i < this.zn; i++) {
+        const th = this.zk[i] * (this.zdx[i] * x + this.zdz[i] * z) - this.zw[i] * t + this.zphase[i];
+        const a = this.zamp[i] * za;
+        const s = Math.sin(th);
+        ox -= this.zdx[i] * a * s;
+        oz -= this.zdz[i] * a * s;
+        oy += a * Math.cos(th);
+      }
     }
     out.x = ox;
     out.y = oy;
@@ -131,6 +206,19 @@ export class Waves {
       nx += this.dx[i] * this.k[i] * a * s;
       nz += this.dz[i] * this.k[i] * a * s;
     }
+    const zm = this.zoneMask(bx, bz);
+    if (zm > 0) {
+      const za = zm * this.zoneScale() * (att / this.scale || 0);
+      for (let i = 0; i < this.zn; i++) {
+        const th = this.zk[i] * (this.zdx[i] * bx + this.zdz[i] * bz) - this.zw[i] * t + this.zphase[i];
+        const a = this.zamp[i] * za;
+        const s = Math.sin(th);
+        h += a * Math.cos(th);
+        vy += a * this.zw[i] * s;
+        nx += this.zdx[i] * this.zk[i] * a * s;
+        nz += this.zdz[i] * this.zk[i] * a * s;
+      }
+    }
     out.h = h;
     out.vy = vy;
     out.nx = nx; // un-normalised surface normal = (nx, 1, nz)
@@ -146,9 +234,17 @@ export class Waves {
 // GLSL shared by the water vertex + fragment shaders.
 export const WAVES_GLSL = /* glsl */ `
 #define WAVE_COUNT ${WAVE_COUNT}
+#define ZONE_COUNT ${ZONE_COUNT}
 uniform vec4 uWaveA[WAVE_COUNT];
 uniform vec4 uWaveB[WAVE_COUNT];
+uniform vec4 uZoneA[ZONE_COUNT];
+uniform vec4 uZoneB[ZONE_COUNT];
+uniform vec4 uZone; // centre xz, inner radius, outer radius
 uniform float uTime;
+
+float zoneMask(vec2 p) {
+  return 1.0 - smoothstep(uZone.z, uZone.w, length(p - uZone.xy));
+}
 
 vec3 gerstner(vec2 p, float att) {
   vec3 o = vec3(0.0);
@@ -159,6 +255,16 @@ vec3 gerstner(vec2 p, float att) {
     float s = sin(th);
     o.xz -= a.xy * amp * s;
     o.y += amp * cos(th);
+  }
+  float zm = zoneMask(p) * att;
+  if (zm > 0.0) {
+    for (int i = 0; i < ZONE_COUNT; i++) {
+      vec4 a = uZoneA[i];
+      float th = a.z * dot(a.xy, p) - uZoneB[i].x * uTime + uZoneB[i].y;
+      float amp = a.w * zm;
+      o.xz -= a.xy * amp * sin(th);
+      o.y += amp * cos(th);
+    }
   }
   return o;
 }
@@ -173,6 +279,16 @@ vec4 gerstnerNormal(vec2 p, float att) {
     float ka = a.z * a.w * att;
     n += a.xy * ka * sin(th);
     c += ka * cos(th);
+  }
+  float zm = zoneMask(p) * att;
+  if (zm > 0.0) {
+    for (int i = 0; i < ZONE_COUNT; i++) {
+      vec4 a = uZoneA[i];
+      float th = a.z * dot(a.xy, p) - uZoneB[i].x * uTime + uZoneB[i].y;
+      float ka = a.z * a.w * zm;
+      n += a.xy * ka * sin(th);
+      c += ka * cos(th);
+    }
   }
   return vec4(n.x, 1.0 - c, n.y, c);
 }

@@ -1,0 +1,53 @@
+<!doctype html><meta charset="utf-8"><body>
+<script type="module">
+// Renders a scripted ride through the real Audio class with an OfflineAudioContext.
+import { Audio } from '../src/audio.js';
+import { skiById } from '../src/specs.js';
+window.render = async (skiId, secs = 11) => {
+  const sr = 44100;
+  const off = new OfflineAudioContext(1, sr * secs, sr);
+  const RealAC = window.AudioContext;
+  window.AudioContext = function () { return off; };
+  const a = new Audio();
+  a.start(skiById(skiId));
+  window.AudioContext = RealAC;
+  a.master.gain.cancelScheduledValues(0);
+  a.master.gain.value = 0.85;
+  const tele = { rpmN: 0.11, power: 0, pumpLoad: 1, speed: 0, wet: 1, exposure: 0, airborne: false };
+  const ctrl = { throttle: 0 };
+  const dt = 1 / 60;
+  let t = 0;
+  const step = () => {
+    // script: idle, gas, airborne (pump dry -> limiter), land, lift (flutter), idle
+    const thr = t < 1.5 ? 0 : t < 8 ? 1 : 0;
+    const air = t > 5 && t < 6.6;
+    ctrl.throttle = thr;
+    tele.pumpLoad += ((air ? 0 : 1) - tele.pumpLoad) * Math.min(1, dt / (air ? 0.09 : 0.03));
+    let rT = 0.11 + 0.89 * thr;
+    if (tele.pumpLoad < 0.45 && thr > 0.15) rT = Math.min(1.05, rT + 0.3);
+    tele.rpmN += (rT - tele.rpmN) * (1 - Math.exp(-dt / (rT > tele.rpmN ? 0.13 : 0.28)));
+    tele.power = Math.pow(Math.max(0, Math.min(1, (tele.rpmN - 0.11) / 0.89)), 1.7);
+    tele.speed += ((thr ? 21 : 0) - tele.speed) * dt * 0.35;
+    tele.wet = air ? 0 : 0.6;
+    tele.airborne = air;
+    tele.exposure = air ? 1 : 0;
+    a.update(tele, ctrl, thr * 0.4, false, dt);
+  };
+  const n = Math.floor(secs / dt) - 2;
+  for (let i = 1; i < n; i++) {
+    off.suspend(i * dt).then(() => { t = i * dt; step(); off.resume(); });
+  }
+  step();
+  const buf = await off.startRendering();
+  const d = buf.getChannelData(0);
+  let pk = 0, nan = 0;
+  for (let i = 0; i < d.length; i++) { if (!Number.isFinite(d[i])) nan++; else pk = Math.max(pk, Math.abs(d[i])); }
+  const i16 = new Int16Array(d.length);
+  for (let i = 0; i < d.length; i++) i16[i] = Math.max(-1, Math.min(1, d[i] || 0)) * 32767;
+  const bytes = new Uint8Array(i16.buffer);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return { peak: pk, nan, sr, b64: btoa(bin) };
+};
+window.ready = true;
+</script>

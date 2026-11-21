@@ -245,6 +245,9 @@ export class Ocean {
     const u = {
       uWaveA: { value: waves.uA },
       uWaveB: { value: waves.uB },
+      uZoneA: { value: waves.uZA },
+      uZoneB: { value: waves.uZB },
+      uZone: { value: waves.uZone },
       uTime: { value: 0 },
       uCenter: { value: new THREE.Vector2() },
       uHeightMap: { value: heightTex },
@@ -388,7 +391,8 @@ export class Ocean {
           float lap = 0.5 + 0.5 * sin(depth * 5.0 - t * 1.3 + lace * 5.0);
           foam = max(foam, clamp((shore * (1.1 + lap * 0.7) - lace * 0.95) * 2.4, 0.0, 1.0) * step(0.001, depth));
           // whitecaps on steep crests
-          float cap = smoothstep(0.2, 0.42, gn.w + (lace - 0.5) * 0.14) * uCaps;
+          float zc = zoneMask(vBase);
+          float cap = smoothstep(0.2 - zc * 0.04, 0.42 - zc * 0.08, gn.w + (lace - 0.5) * 0.14) * max(uCaps, zc * 0.85);
           foam = max(foam, clamp((cap * 1.6 - lace) * 2.0, 0.0, 1.0));
           foam *= 0.74 + 0.26 * fine;
           float foamTex = 0.8 + 0.2 * lace + 0.12 * (fine - 0.5);
