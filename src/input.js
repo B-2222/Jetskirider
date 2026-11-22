@@ -9,7 +9,7 @@ export class Input {
   constructor(touchRoot) {
     this.keys = new Set();
     this.pressed = new Set(); // edge-triggered this frame
-    this.state = { throttle: 0, brake: 0, steer: 0, lean: 0, trimCmd: 0 };
+    this.state = { throttle: 0, brake: 0, steer: 0, lean: 0, trimCmd: 0, trick: 0 };
     this.steerSmooth = 0;
     this.touch = { active: false, steer: 0, throttle: 0, brake: 0, lean: 0, trim: 0 };
     this.usingGamepad = false;
@@ -87,6 +87,7 @@ export class Input {
         else if (name === 'fwd') T.lean = v ? 1 : T.lean === 1 ? 0 : T.lean;
         else if (name === 'trimUp') T.trim = v ? 1 : T.trim === 1 ? 0 : T.trim;
         else if (name === 'trimDown') T.trim = v ? -1 : T.trim === -1 ? 0 : T.trim;
+        else if (name === 'trick') T.trick = v ? 1 : 0;
       };
       b.addEventListener('pointerdown', (e) => {
         b.setPointerCapture(e.pointerId);
@@ -168,6 +169,7 @@ export class Input {
     let steerT = (down('KeyD', 'ArrowRight') ? 1 : 0) - (down('KeyA', 'ArrowLeft') ? 1 : 0);
     let lean = (down('ShiftLeft', 'ShiftRight') ? 1 : 0) - (down('Space') ? 1 : 0);
     let trim = (down('KeyE', 'PageUp') ? 1 : 0) - (down('KeyQ', 'PageDown') ? 1 : 0);
+    let trick = down('KeyX') ? 1 : 0;
     let analog = false;
 
     // ---- Xbox / standard-mapping gamepad ---------------------------------
@@ -234,6 +236,7 @@ export class Input {
         else if (ly < -0.3) lean = Math.min(1, (-ly - 0.3) / 0.6) * 0.45;
         trim += (down(P.RB) ? 1 : 0) - (down(P.LB) ? 1 : 0);
         this.padLook = down(P.X);
+        if (down(P.X)) trick = 1;
         this.camStick.x = rx;
         this.camStick.y = ry;
       }
@@ -248,6 +251,7 @@ export class Input {
       brake = Math.max(brake, T.brake);
       if (T.lean) lean = T.lean;
       if (T.trim) trim = T.trim;
+      if (T.trick) trick = 1;
     }
 
     if (!this.enabled) {
@@ -268,6 +272,7 @@ export class Input {
     s.brake = brake;
     s.lean = lean;
     s.trimCmd = clamp(trim, -1, 1);
+    s.trick = this.enabled ? trick : 0;
     return s;
   }
 }

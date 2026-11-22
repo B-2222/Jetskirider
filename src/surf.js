@@ -203,7 +203,7 @@ float surfField(vec2 p, out float foam) {
     float sl = s - A.x;
     if (sl < -60.0 || sl > 40.0) continue;
     float env = 1.0 - smoothstep(B.z, B.z + 50.0, abs(l - B.w));
-    if (env <= 0.0) continue;
+    if (env <= 0.002) continue;
     float al = abs(l - B.x);
     float fw = A.z;
     if (B.y >= 0.0) fw += (2.9 - fw) * (al > B.y ? 1.0 - smoothstep(0.0, 40.0, al - B.y) : 1.0);

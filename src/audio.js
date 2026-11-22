@@ -16,6 +16,11 @@
 import { clamp, smoothstep, makeRng } from './util.js';
 
 function character(spec) {
+  if (spec.twoStroke) {
+    // two-stroke twin: fires every revolution on each cylinder, through a
+    // ringing expansion chamber: high, raspy and busy ("braap")
+    return { fires: 4, cylOff: [0, 0.012, 0.004, 0.016], cylAmp: [1, 0.86, 0.97, 0.9], f: [160, 440, 1020, 2450], bw: [85, 170, 360, 1000], g: [0.8, 0.8, 0.52, 0.3], noise: 0.95, lump: 0.15, thump: 0.7, seed: 13 };
+  }
   if (spec.style === 'spark') {
     // 900 ACE: smaller, raspier, higher resonances
     return { f: [124, 350, 840, 1950], bw: [70, 140, 300, 900], g: [1.0, 0.62, 0.36, 0.16], noise: 0.55, lump: 0.1, thump: 0.9, seed: 3 };
@@ -38,20 +43,23 @@ function synthLoop(sr, rpm, ch, onLoad) {
   const rng = makeRng(ch.seed * 7919 + Math.round(rpm) * 3 + (onLoad ? 1 : 0));
   const ex = new Float32Array(len);
   // a triple fires every 240 degrees, but real ones are never perfectly even
-  const cylOff = [0, 0.02, -0.014];
-  const cylAmp = [1, 0.84, 0.93];
+  // a triple four-stroke fires 3 times per two revolutions; a twin
+  // two-stroke 4 times. Real engines are never perfectly even.
+  const fires = ch.fires || 3;
+  const cylOff = ch.cylOff || [0, 0.02, -0.014];
+  const cylAmp = ch.cylAmp || [1, 0.84, 0.93];
   const pw = Math.max(2, Math.round(sr * 0.00045));
   const nd = sr * (onLoad ? 0.0032 : 0.0014);
   const nlen = Math.round(nd * 5);
   for (let c = 0; c < cycles; c++) {
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0; k < fires; k++) {
       // no two combustion events are the same: vary strength and timing
       let a = cylAmp[k] * (1 + (rng() - 0.5) * ch.lump * 2) * (0.8 + rng() * 0.4);
       if (!onLoad) {
         a *= 0.32 + rng() * 0.22;
         if (rng() < 0.07) a *= 0.15; // the odd weak, lazy fire on overrun
       }
-      const pos = Math.floor((c + (k + cylOff[k] + (rng() - 0.5) * 0.025) / 3) * spc);
+      const pos = Math.floor((c + (k + cylOff[k] + (rng() - 0.5) * 0.025) / fires) * spc);
       for (let i = 0; i < pw; i++) ex[(pos + i) % len] += a * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / pw));
       const na = a * ch.noise * (onLoad ? 1 : 0.45);
       for (let i = 0; i < nlen; i++) ex[(pos + i) % len] += na * (rng() * 2 - 1) * Math.exp(-i / nd) * 0.6;
@@ -448,7 +456,7 @@ export class Audio {
     this.spec = spec;
     if (!this.ready) return;
     const ctx = this.ctx;
-    const key = spec.style + (spec.turbo ? 't' : '') + spec.idleRpm + '-' + spec.maxRpm;
+    const key = spec.style + (spec.turbo ? 't' : '') + (spec.twoStroke ? '2' : '') + spec.idleRpm + '-' + spec.maxRpm;
     if (key === this.loopKey) return;
     this.loopKey = key;
     const ch = character(spec);
@@ -623,7 +631,7 @@ export class Audio {
     this.gurAmp.gain.setTargetAtTime(base * (0.32 * (1 - rn) + 0.06) * (1 - open * 0.8), t, 0.1);
 
     // intake roar, strongest on load at high rpm
-    const fire = (rpm / 60) * 1.5;
+    const fire = (rpm / 60) * (sp.twoStroke ? 2 : 1.5);
     const ig = base * (0.05 + 0.5 * L * rn * rn) * (1 - lim * 0.5);
     this.intake.f.frequency.setTargetAtTime(520 + 900 * rn, t, 0.06);
     this.inLfo.frequency.setTargetAtTime(fire, t, 0.03);

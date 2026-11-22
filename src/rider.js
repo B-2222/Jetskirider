@@ -203,7 +203,9 @@ export class Rider {
     const helmetBase = darkTrim ? 0xeff2f5 : 0x15171b;
     const mSuit = M({ color: 0x15171a, roughness: 0.55, sheen: 0.4, sheenColor: new THREE.Color(0x30343a), sheenRoughness: 0.6 });
     const mShorts = M({ map: tex(shortsTexture(trim)), roughness: 0.85, side: THREE.DoubleSide });
-    const mVest = M({ map: tex(vestTexture(trim)), roughness: 0.6, clearcoat: 0.15 });
+    const vt = tex(vestTexture(trim));
+    vt.repeat.x = -1; // the loft runs round the body the other way: unmirror the print
+    const mVest = M({ map: vt, roughness: 0.6, clearcoat: 0.15 });
     const mGlove = M({ color: 0x0c0d0f, roughness: 0.75, side: THREE.DoubleSide });
     const mGloveAcc = M({ color: trim, roughness: 0.5 });
     const mBoot = M({ color: 0x111216, roughness: 0.7 });
@@ -458,20 +460,39 @@ export class Rider {
     const lb = this.leanBack;
     const lf = this.leanFwd;
     const sd = this.side;
+    const su = !!A.standup;
+    this.sm = damp(this.sm || 0, s.superman || 0, 0.06, dt);
+    const sm = this.sm;
 
     // hips
     const hip = this.hip;
     hip.copy(A.seat);
-    hip.y += 0.1 + st * 0.2 + lb * 0.1 + lf * 0.06;
-    hip.x += -st * 0.04 - lb * 0.3 + lf * 0.14;
-    hip.z += sd * 0.12;
-    hip.y -= Math.min(Math.abs(sd), 1.8) * 0.03;
-
-    // torso lean (from vertical, forward positive), keep the rider's body more
-    // world-upright when the ski stands on its tail
-    let lean = 0.42 + lf * 0.35 - lb * 0.1 + st * 0.12 + clamp(T.pitch, -0.3, 1.2) * 0.62 + this.crouch;
-    lean = clamp(lean, -0.1, 1.25);
-    const rollIn = sd * 0.3;
+    let lean;
+    let rollIn;
+    if (su) {
+      // stand-up: standing in the tray, knees soaking up the chop, the whole
+      // body thrown into the turn
+      hip.y -= rough * 0.12 + Math.min(Math.abs(sd), 1.8) * 0.06 + Math.max(this.crouch, 0) * 0.1;
+      hip.x += -lb * 0.22 + lf * 0.08;
+      hip.z += sd * 0.16;
+      lean = 0.78 + lf * 0.25 - lb * 0.3 + clamp(T.pitch, -0.3, 1.2) * 0.5 + this.crouch;
+      rollIn = sd * 0.55;
+      // Superman: hips up and back, body stretched out flat over the pole
+      hip.x -= sm * 0.12;
+      hip.y += sm * 0.3;
+      lean = lean + (1.42 - lean) * sm;
+      rollIn *= 1 - sm;
+    } else {
+      hip.y += 0.1 + st * 0.2 + lb * 0.1 + lf * 0.06;
+      hip.x += -st * 0.04 - lb * 0.3 + lf * 0.14;
+      hip.z += sd * 0.12;
+      hip.y -= Math.min(Math.abs(sd), 1.8) * 0.03;
+      // torso lean (from vertical, forward positive), keep the rider's body more
+      // world-upright when the ski stands on its tail
+      lean = 0.42 + lf * 0.35 - lb * 0.1 + st * 0.12 + clamp(T.pitch, -0.3, 1.2) * 0.62 + this.crouch;
+      rollIn = sd * 0.3;
+    }
+    lean = clamp(lean, -0.1, su ? 1.5 : 1.25);
     const chest = this.chest;
     _c.set(Math.sin(lean), Math.cos(lean) * Math.cos(rollIn), Math.cos(lean) * Math.sin(rollIn));
     chest.copy(hip).addScaledVector(_c, DIM.torso);
@@ -558,9 +579,14 @@ export class Rider {
       const hj = new THREE.Vector3().copy(hip).addScaledVector(right, sgn * DIM.hip).addScaledVector(up, -0.02);
       const f0 = i === 0 ? A.footL : A.footR;
       const f1 = i === 0 ? A.footBackL : A.footBackR;
-      const k = clamp(lb * 1.1 + st * 0.25, 0, 1);
+      const k = clamp(lb * 1.1 + (su ? 0 : st * 0.25), 0, 1);
       const foot = new THREE.Vector3().lerpVectors(f0, f1, k);
       foot.x -= lf * -0.06;
+      if (su && sm > 0.01) {
+        // Superman: legs straight out behind, off the tray
+        const out = new THREE.Vector3(hip.x - 0.92, hip.y + 0.04, hip.z + sgn * 0.1);
+        foot.lerp(out, sm);
+      }
       const ankle = new THREE.Vector3(foot.x - 0.05, foot.y + 0.07, foot.z);
       const pole = new THREE.Vector3(0.75, 0.75, sgn * 0.42);
       const kn = new THREE.Vector3();
@@ -572,8 +598,8 @@ export class Rider {
       this.place(leg.shin, kn, an);
       leg.knee.position.copy(kn);
       leg.hipJ.position.copy(hj);
-      leg.foot.position.set(an.x + 0.06, an.y - 0.045, an.z);
-      leg.foot.rotation.set(0, 0, 0);
+      leg.foot.position.set(an.x + 0.06 * (1 - sm), an.y - 0.045 * (1 - sm), an.z);
+      leg.foot.rotation.set(0, 0, su ? sm * 1.45 : 0);
     }
   }
 }

@@ -179,7 +179,7 @@ class Remote {
     // full rider IK up close, every few frames further out
     if (this.rider.group.visible && (dist < 90 || this.frame % 4 === 0)) {
       this.group.updateMatrixWorld(true);
-      this.rider.update(dist < 90 ? dt : dt * 4, this.model, this.group, { steer: s.st || 0, lean: s.ln || 0, tele, sea: 0.5 });
+      this.rider.update(dist < 90 ? dt : dt * 4, this.model, this.group, { steer: s.st || 0, lean: s.ln || 0, tele, sea: 0.5, superman: clamp(s.sm || 0, 0, 1) });
     }
     this.effects(dt, s, tele, dist, speed, budget);
   }
@@ -487,6 +487,7 @@ export class Multiplayer {
       pw: r2(T.power * T.pumpLoad),
       ln: r2(p.ctrl.lean),
       li: r2(p.leanIn || 0),
+      sm: r2(T.superman || 0),
       a: T.airborne ? 1 : 0,
       w: g.wipe.on ? 1 : 0,
       f: T.reverse > 0.05 ? 1 : 0,

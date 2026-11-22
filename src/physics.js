@@ -74,7 +74,17 @@ export class SkiPhysics {
     this.wx = 0;
     this.wy = 0;
     this.wz = 0;
-    this.ctrl = { throttle: 0, brake: 0, steer: 0, lean: 0, trimCmd: 0 };
+    this.ctrl = { throttle: 0, brake: 0, steer: 0, lean: 0, trimCmd: 0, trick: 0 };
+    this.subT = 0; // stand-up: how long the nose has been buried
+    this.superman = 0; // stand-up: rider stretched out in the air (0..1)
+    this.airOkS = false; // stand-up: this flight is long enough to stretch out
+    this.airOkF = false; // stand-up: ... and long enough to flip or roll
+    this.airDriven = false; // stand-up: the rider threw a rotation this flight
+    this.airLeft = 0; // stand-up: predicted time to touchdown, s
+    this.predT = 0;
+    // time a flip or roll needs to get round far enough to ride away (~300°)
+    this.trickNeed = spec.standup ? 5.3 / Math.min(spec.flipRate, spec.rollRate) + 0.1 : 99;
+    this._sf = {};
     this.trim = 0; // -1 (bow down) .. +1 (bow up)
     this.steerAngle = 0;
     this.rpmN = 0.1;
@@ -126,7 +136,8 @@ export class SkiPhysics {
     this.unhook = spec.unhook ?? (light ? 0.28 : 0.36); // grip left once the V is out of the water
     this.carve = spec.carve ?? (light ? 1.0 : 0.95); // full-lock demand as a fraction of grip
     this.hopK = spec.hop ?? (light ? 1 : 0.5);
-    this.nozzleL = { x: -0.4 * spec.L, y: -0.245, z: 0 };
+    // a stand-up's pump sits much closer to its (high, rider-heavy) centre of mass
+    this.nozzleL = { x: -0.4 * spec.L, y: spec.standup ? -0.12 : -0.245, z: 0 };
     this.intakeL = { x: -0.17 * spec.L, y: -0.45, z: 0 };
     // Quadratic drag solved so that thrust == drag at the rated top speed.
     this.vFree = spec.top * 1.06;
@@ -153,7 +164,22 @@ export class SkiPhysics {
     this.steerAngle = 0;
     this.rpmN = 0.1;
     this.tele.airTime = 0;
+    this.airOkS = this.airOkF = this.airDriven = false;
+    this.airLeft = 0;
+    this.airHeld = null;
     this.frozen = false;
+  }
+
+  // Seconds until a ski flying from here (ballistic) touches water or ground.
+  // lowOff = height of the centre of mass above the lowest point of the hull.
+  flightLeft(t, lowOff) {
+    const o = this._sf;
+    for (let s = 0.05; s <= 2.4; s += 0.05) {
+      const y = this.py + this.vy * s - 0.5 * G * s * s - lowOff;
+      this.world.sample(this.px + this.vx * s, this.pz + this.vz * s, t + s, o);
+      if (y < Math.max(o.water, o.ground)) return s;
+    }
+    return 2.4;
   }
 
   get yaw() {
@@ -212,17 +238,18 @@ export class SkiPhysics {
       this.lcLaunch -= dt;
       if (c.throttle < 0.3 || spdNow > sp.top * 0.7) this.lcLaunch = 0;
     }
-    const brake = this.lcArmed ? 0 : c.brake;
+    // stand-ups have no reverse: the lever only cuts the throttle
+    const brake = this.lcArmed || sp.standup ? 0 : c.brake;
 
     // --- actuators ----------------------------------------------------------
     this.steerAngle = damp(this.steerAngle, c.steer * sp.steerMax, 0.045, dt);
-    this.trim = clamp(this.trim + c.trimCmd * dt * 1.6, -1, 1);
+    this.trim = sp.standup ? 0 : clamp(this.trim + c.trimCmd * dt * 1.6, -1, 1); // stand-ups have no trim
     if (this.lcArmed || this.lcLaunch > 1.4) this.trim = damp(this.trim, -1, 0.12, dt);
     else if (this.lcLaunch > 0) this.trim = damp(this.trim, this.lcTrimSave, 0.35, dt);
     const trimAngle = this.trim > 0 ? this.trim * sp.trimUp : this.trim * sp.trimDown;
     const delta = this.steerAngle;
 
-    const thr = brake > 0.05 ? 0 : c.throttle;
+    const thr = brake > 0.05 || (sp.standup && c.brake > 0.05) ? 0 : c.throttle;
     const demand = Math.max(thr, brake * 0.75);
     let rpmT = 0.11 + 0.89 * demand;
     if (this.lcArmed) rpmT = sp.launchRpm ?? 0.62;
@@ -274,7 +301,8 @@ export class SkiPhysics {
     // trim up lifts it and loosens the turn.
     const carveBite = (1 - this.leanIn) * smoothstep(0.04, 0.42, Math.abs(rollNow));
     const trimBite = 1 + 0.3 * Math.max(-this.trim, 0) - 0.22 * Math.max(this.trim, 0);
-    const gripMul = (1 - (1 - this.unhook) * unhooked) * (1 + 0.9 * carveBite) * trimBite;
+    // a stand-up's narrow hull rails even harder when it is leaned over
+    const gripMul = (1 - (1 - this.unhook) * unhooked) * (1 + (sp.standup ? 1.4 : 0.9) * carveBite) * trimBite;
 
     let Fx = 0, Fy = -m * G, Fz = 0;
     let Tx = 0, Ty = 0, Tz = 0;
@@ -292,7 +320,7 @@ export class SkiPhysics {
     // --- hull points --------------------------------------------------------
     const S = this._s;
     const N = this._n;
-    let wet = 0, groundN = 0, impact = 0, wetStern = 0, latCap = 0;
+    let wet = 0, groundN = 0, impact = 0, wetStern = 0, latCap = 0, lowY = 1e9;
     const pts = this.points;
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
@@ -308,6 +336,7 @@ export class SkiPhysics {
       this.ptPos[i * 3] = wxp; this.ptPos[i * 3 + 1] = wyp; this.ptPos[i * 3 + 2] = wzp;
       this.ptVel[i * 3] = pvx; this.ptVel[i * 3 + 1] = pvy; this.ptVel[i * 3 + 2] = pvz;
       this.ptDepth[i] = depth;
+      if (!p.deck && wyp < lowY) lowY = wyp;
 
       // solid ground / ramps
       const pen = S.ground - wyp;
@@ -445,7 +474,9 @@ export class SkiPhysics {
       // only a committed slide lets the stern come round; otherwise the rider
       // eases the bars as soon as the hull starts to slip and it stays hooked up
       const loose = Math.max(smoothstep(0.16, 0.55, slipA), unhooked * 0.7) * smoothstep(3, 7, spdH) * smoothstep(0, 0.35, li);
-      const hold = 1 - (1 - smoothstep(0, 0.35, li)) * smoothstep(0.14, 0.36, slipA) * 0.85;
+      let hold = 1 - (1 - smoothstep(0, 0.35, li)) * smoothstep(0.14, 0.36, slipA) * 0.85;
+      // a light stand-up would chatter on and off the limit: ease in and out smoothly
+      if (sp.standup) hold = this.holdS = damp(this.holdS ?? 1, hold, hold < (this.holdS ?? 1) ? 0.06 : 0.25, dt);
       const rLoose = 0.8 + 1.7 * jetFrac;
       const rCmd = sN * (rHook + (Math.max(rLoose, rHook) - rHook) * loose) * hold;
       const auth = wetStern * upright * (0.16 * clamp(au / 6, 0, 1) + 0.84 * jetFrac);
@@ -453,13 +484,17 @@ export class SkiPhysics {
       const ts = this.Iy * 7.5 * (1 + (sp.grip * gripMul) / 16) * (rCmd - yawRateR) * auth;
       // turn about the vertical: about the hull's own axis this would start
       // rolling the ski over once it is banked hard in a slide
-      Ty -= ts * Math.max(uy, 0);
+      Ty -= ts * (sp.standup ? smoothstep(0.05, 0.45, uy) : Math.max(uy, 0));
       T.rCmd = rCmd;
     }
 
     // --- banking: the V hull + rider lean the ski into the turn -------------
     const aLat = yawRateR * Math.max(ucm, 0);
-    const bankRaw = clamp(Math.atan2(aLat, G) * 0.75 + sN * 0.1 * clamp(ucm / 8, 0, 1), -0.6, 0.6) + Math.sign(sN) * this.leanIn * 0.55;
+    // On a stand-up the rider leans the whole ski into the turn with their
+    // body, so it banks much harder than a sit-down.
+    const bankRaw = sp.standup
+      ? clamp(Math.atan2(aLat, G) * 0.85 + sN * 0.22 * clamp(ucm / 7, 0, 1), -0.72, 0.72) + Math.sign(sN) * this.leanIn * 0.3
+      : clamp(Math.atan2(aLat, G) * 0.75 + sN * 0.1 * clamp(ucm / 8, 0, 1), -0.6, 0.6) + Math.sign(sN) * this.leanIn * 0.55;
     this.bankS = damp(this.bankS || 0, clamp(bankRaw, -0.85, 0.85), 0.22, dt);
     const bankT = this.bankS;
     const roll = -Math.asin(clamp(ry, -1, 1));
@@ -485,6 +520,28 @@ export class SkiPhysics {
     // --- rider weight -------------------------------------------------------
     // lean > 0 = weight forward (nose down), lean < 0 = pull back (nose up)
     const air = wet < 0.02 && groundN < 0.02;
+    // Stand-ups: is there time left in this flight for a trick? The sea is a
+    // known function of time, so follow the ski's arc forward and find where
+    // it meets the water (a wave rising to meet it, or the back of one falling
+    // away). A trick can only START while there is time to finish it: a
+    // Superman needs a medium jump, a flip or roll a big one. Once allowed it
+    // stays allowed for the flight, so it never cuts out mid-air. Chop and
+    // slide hops never come close.
+    if (!air) {
+      this.airOkS = this.airOkF = this.airDriven = false;
+      this.airLeft = 0;
+      this.predT = 0;
+    } else if (sp.standup && !this.airOkF && T.airTime < 0.6) {
+      this.predT -= dt;
+      if (!this.wasAir || (T.airTime > 0.12 && this.predT <= 0)) {
+        this.predT = 0.04;
+        this.airLeft = this.flightLeft(t, this.py - lowY);
+        if (T.airTime > 0.12) {
+          if (this.airLeft >= 0.45) this.airOkS = true;
+          if (this.airLeft >= this.trickNeed) this.airOkF = true;
+        }
+      }
+    }
     let tp;
     const pitchNow = Math.asin(clamp(fy, -1, 1));
     const wPitch = this.wx * rx + this.wy * ry + this.wz * rz;
@@ -497,21 +554,130 @@ export class SkiPhysics {
       tp = -c.lean * sp.leanTorque * (air ? 0.75 : 0.3);
     }
     // engine + rider sit aft of the centre of buoyancy: static bow-up trim
-    tp += m * G * 0.17 * wet * upright;
+    tp += m * G * (sp.standup ? 0.1 : 0.17) * wet * upright;
     // sliding backwards the bow trips and digs in, the stern lifts
     if (ucm < -0.8) tp -= this.Iz * 15 * Math.min(-ucm - 0.8, 6) / 6 * wet * upright;
     // sliding hard sideways also loads the bow a little
     tp -= this.Iz * 1.4 * Math.min(Math.abs(vcm), 10) / 10 * wet * upright * clamp(1 - this.trim, 0, 1);
     tp += this.Iz * 6 * hop * (wetStern * 0.8 + 0.2);
     // not pulling back: the rider's weight keeps the bow from standing up
-    if (c.lean >= 0 && !air && pitchNow > 0.35) tp -= Math.min(this.Iz * (24 * (pitchNow - 0.35) + 5 * Math.max(wPitch, 0)), sp.leanTorque * 2.2);
+    {
+      // a stand-up rider is right over the bars and keeps the nose down sooner
+      const p0 = sp.standup ? 0.16 : 0.35;
+      if (c.lean >= 0 && (!air || (sp.standup && T.airTime < 0.25)) && pitchNow > p0) tp -= Math.min(this.Iz * (24 * (pitchNow - p0) + 5 * Math.max(wPitch, 0)), sp.leanTorque * 2.2);
+    }
     // At real speed the rider is braced and working the ski flat: without it
     // a 150 km/h hull would kite or stuff its nose on the first bit of chop.
     const stab = c.lean === 0 && !air ? smoothstep(17, 32, Math.abs(ucm)) * upright : 0;
     if (stab > 0) {
       tp += clamp(this.Iz * (20 * (0.05 - pitchNow) - 7 * wPitch), -sp.leanTorque * 3, sp.leanTorque * 3) * stab;
     }
-    if (air) {
+    // --- stand-up: sink the nose, then pop out of the water --------------------
+    // Freestyle riders bury the bow at low speed (weight forward, no steering),
+    // then let it go or yank back: the buoyant nose shoots up and the ski
+    // launches, which is how flat-water backflips are done.
+    if (sp.standup) {
+      const bowDepth = this.ptDepth[8];
+      const subbing = !air && c.lean > 0.5 && Math.abs(c.steer) < 0.35 && Math.hypot(this.vx, this.vz) < (this.subT > 0 ? 13 : 9) && c.throttle > 0.2;
+      if (subbing) {
+        tp -= this.Iz * 9 * upright;
+        Fy -= m * 3 * upright;
+        // a buried nose is a big brake: the ski stops accelerating
+        if (bowDepth > 0.12) {
+          const u = Math.max(ucm, 0);
+          Fx -= fhx * u * m * 2.4;
+          Fz -= fhz * u * m * 2.4;
+        }
+        if (bowDepth > 0.22) this.subT = Math.min(1.4, this.subT + dt);
+      } else if (this.subT > 0.3 && !air && c.lean < 0.2) {
+        // let go: the buried, buoyant hull drives up out of the water for a
+        // moment (a push over a quarter second, not an instant kick, so the
+        // water's drag on the way up is part of it)
+        this.popT = 0.26;
+        this.popK = Math.min(1, this.subT);
+        this.subT = 0;
+        T.pop = 1;
+      } else this.subT = Math.max(0, this.subT - dt * 2);
+      if (this.popT > 0) {
+        this.popT -= dt;
+        const k = this.popK;
+        // only while the hull is still in the water pushing up
+        const inWater = Math.min(1, wet * 4 + 0.15);
+        Fy += m * (25 + 18 * k) * (sp.popK || 1) * upright * inWater;
+        tp += this.Iz * (6 + 4 * k) * inWater;
+      }
+    }
+    // stretched out off the tray (Superman), only in the air
+
+    // Air tricks only count when pressed after leaving the water, and only off
+    // a real launch (a wave, ramp or nose-sink pop with ~0.6 s of air, never a
+    // skip off the chop). The slide button is never a trick button, so
+    // starting a powerslide over chop can never roll the ski. (Pulling back
+    // at the lip of a real launch is how a backflip is thrown, so that one
+    // may be held through take-off.)
+    if (air && !this.wasAir) this.airHeld = { lean: c.lean, steer: sN, trick: c.trick, vy: this.vy };
+    if (!air) this.airHeld = null;
+    let aLean = c.lean;
+    let aSteer = sN;
+    let aTrick = c.trick > 0.5;
+    if (this.airHeld) {
+      const h = this.airHeld;
+      if (h.lean < -0.3 && c.lean >= -0.3) h.lean = 0;
+      if (Math.abs(h.steer) > 0.3 && Math.abs(sN) <= 0.3) h.steer = 0;
+      if (h.trick > 0.5 && c.trick <= 0.5) h.trick = 0;
+      if (h.lean < -0.3 && c.lean < -0.3 && h.vy < 3.8 && !this.airOkF) aLean = 0;
+      if (Math.abs(h.steer) > 0.3 && Math.abs(sN) > 0.3) aSteer = 0;
+      if (h.trick > 0.5) aTrick = false;
+      // a strong launch, or a medium one that has already been airborne for
+      // half a second (skips off the chop are over long before that).
+      // Stand-ups go by the predicted flight instead: a Superman needs a
+      // medium jump, a flip or roll a big one.
+      const real = T.airTime > 0.12 && (h.vy >= 3.8 || (T.airTime > 0.45 && h.vy >= 2.5));
+      const okS = sp.standup ? this.airOkS : real;
+      const okF = sp.standup ? this.airOkF : real;
+      if (!okF) {
+        aLean = Math.max(aLean, 0);
+        aSteer = 0;
+      }
+      if (!okS) aTrick = false;
+    } else aTrick = false;
+    const rollMode = aTrick && Math.abs(aSteer) > 0.3;
+    // stretched out off the tray (Superman): trick button, no steering
+    this.superman = damp(this.superman, sp.standup && air && aTrick && !rollMode ? 1 : 0, aTrick ? 0.09 : 0.07, dt);
+    if (air && sp.standup) {
+      // Stand-ups flip. The rider throws the ski round with the pole:
+      //   pull back = backflip (pull harder to tuck and rotate faster),
+      //   trick button = Superman, trick + steer = barrel roll, steer = spin.
+      // Let go and a rotation that is under way carries on (you cannot stop
+      // a flip in mid-air); once upright the rider settles it to land.
+      const K = 8;
+      const kRot = 1 - 0.45 * this.superman; // stretched out turns slower
+      const settle = smoothstep(0.2, 0.45, T.airTime) * smoothstep(0.15, 0.5, uy);
+      let tr;
+      if (rollMode) {
+        this.airDriven = true;
+        tp = -this.Iz * 3 * wPitch;
+        tr = this.Ix * K * (Math.sign(aSteer) * sp.rollRate * kRot - wRoll);
+      } else {
+        // a thrown flip or roll carries on once let go; a ski that left the
+        // face rotating on its own (looping out) the rider fights
+        const fight = this.airDriven ? 0 : 1 - smoothstep(0.3, 0.7, uy);
+        if (aLean < -0.3) {
+          tp = this.Iz * K * (-aLean * sp.flipRate * kRot - wPitch);
+          this.airDriven = true;
+        } else if (this.airDriven && Math.abs(wPitch) > 2.2 && uy < 0.6) tp = -this.Iz * 0.6 * wPitch;
+        else tp = this.Iz * ((6 * (0.04 - clamp(aLean, -1, 1) * 0.25 - pitchNow) - 3.5 * wPitch) * settle + (5 * (0.04 - pitchNow) - 4 * wPitch) * fight);
+        tr = this.airDriven && Math.abs(wRoll) > 2.5 && uy < 0.6
+          ? -this.Ix * 0.6 * wRoll
+          : this.Ix * ((9 * -roll - 4.5 * wRoll) * settle - 6 * wRoll * smoothstep(0.2, 0.5, uy) + (5 * -roll - 4 * wRoll) * fight);
+        if (!aTrick && Math.abs(aSteer) > 0.15) {
+          const ts = this.Iy * K * (aSteer * sp.spinRate * kRot - yawRateR);
+          Tx -= ux * ts; Ty -= uy * ts; Tz -= uz * ts;
+        }
+      }
+      tp -= this.Iz * 1.2 * this.superman;
+      Tx += fx * tr; Ty += fy * tr; Tz += fz * tr;
+    } else if (air) {
       // Out of the water there is nothing to push against, so no flips, rolls
       // or spins can be started up here. Whatever rotation the ski had when it
       // left the water carries on: a flat 360 is thrown by turning hard into
@@ -542,8 +708,12 @@ export class SkiPhysics {
     // Leaving the water mid-turn on a real launch, the rider throws the ski
     // round at the lip. Only a turn that is already happening gets carried
     // into the air: no turn at take-off, no spin.
+    // A stand-up rider who is already pulling back at the lip pops the flip.
+    if (sp.standup && air && !this.wasAir && c.lean < -0.4 && this.vy > 3.8 && this.airLeft >= this.trickNeed) {
+      this.wx += rx * 2.0; this.wy += ry * 2.0; this.wz += rz * 2.0;
+    }
     if (air && !this.wasAir && this.vy > 2.5 && Math.abs(sN) > 0.5 && Math.abs(yawRateR) > 0.6 && Math.sign(sN) === Math.sign(yawRateR)) {
-      const cap = sp.style === 'spark' ? 4.6 : 3.6;
+      const cap = sp.style === 'spark' || sp.standup ? 4.6 : 3.6;
       const want = Math.sign(yawRateR) * Math.min(Math.abs(yawRateR) * 1.7, cap);
       const dY = want - yawRateR;
       if (Math.sign(dY) === Math.sign(yawRateR)) {
@@ -602,6 +772,8 @@ export class SkiPhysics {
     T.als = alsActive;
     T.lcArmed = this.lcArmed;
     T.lcLaunch = this.lcLaunch;
+    T.superman = this.superman;
+    T.subT = this.subT;
     T.leanIn = this.leanIn;
     T.unhooked = unhooked;
     if (impact > T.impact) T.impact = impact;

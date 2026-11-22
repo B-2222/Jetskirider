@@ -66,6 +66,11 @@ export class Tricks {
     this.live = '';
     this.livePts = 0;
     const onWater = T.wet > 0.05 && !T.airborne;
+    if (T.pop) {
+      // latched by the physics until read here
+      this.popPending = true;
+      T.pop = 0;
+    }
 
     // --- powerslide --------------------------------------------------------
     const slipDeg = Math.abs(T.slip) * 57.3;
@@ -173,26 +178,55 @@ export class Tricks {
         a.maxH = 0;
         a.y0 = phys.py;
         a.wave = this.zoneAt ? this.zoneAt(phys.px, phys.pz) > 0.4 : false;
+        a.sm = 0;
+        a.flat = this.popPending;
+        this.popPending = false;
       }
       a.time += dt;
       // integrate body rates
       a.pitch += (phys.wx * T.rx + phys.wy * T.ry + phys.wz * T.rz) * dt;
+      if ((T.superman || 0) > 0.7) a.sm += dt;
       a.yaw += (phys.wx * T.ux + phys.wy * T.uy + phys.wz * T.uz) * dt;
       a.roll += (phys.wx * T.fx + phys.wy * T.fy + phys.wz * T.fz) * dt;
       a.maxH = Math.max(a.maxH, phys.py - a.y0);
       if (a.time > 0.45) {
-        this.live = 'AIR';
-        this.livePts = a.time * 150;
+        this.live = (T.superman || 0) > 0.7 ? 'SUPERMAN' : 'AIR';
+        this.livePts = a.time * 150 + a.sm * 600;
       }
     } else if (a.on) {
       a.on = false;
-      if (a.time > 0.55 && T.uy > 0.3) {
-        // a rotation counts once it is ~80% done; the landing assist finishes it
-        // flat spins only: they are carried off the lip, never started in the air
+      if (a.time > 0.55 && T.uy > 0.3 && (T.superman || 0) < 0.45) {
         const spins = Math.floor(Math.abs(a.yaw) / Math.PI + 0.25);
         const parts = [];
         let pts = a.time * 180 + Math.min(a.maxH, 10) * 40;
-        if (spins > 0) {
+        if (phys.spec.standup) {
+          // stand-ups flip, roll and stretch out; a rotation counts once it
+          // is ~80% done (the rider finishes it on the way down)
+          const flips = Math.floor(Math.abs(a.pitch) / (Math.PI * 2) + 0.2);
+          const rolls = Math.floor(Math.abs(a.roll) / (Math.PI * 2) + 0.2);
+          if (a.sm > 0.25) {
+            parts.push('SUPERMAN');
+            pts += 700 + a.sm * 600;
+          }
+          if (flips > 0) {
+            parts.push((flips > 1 ? 'DOUBLE ' : '') + (a.pitch > 0 ? 'BACKFLIP' : 'FRONTFLIP'));
+            pts += 1500 * flips;
+          }
+          if (rolls > 0) {
+            parts.push((rolls > 1 ? 'DOUBLE ' : '') + 'BARREL ROLL');
+            pts += 1300 * rolls;
+          }
+          if (spins > 0) {
+            parts.push(spins * 180 + (parts.length ? '' : ' SPIN'));
+            pts += 450 * spins;
+          }
+          if (parts.length > 1) pts *= 1.3;
+          if (a.flat && parts.length) {
+            parts[0] = 'FLATWATER ' + parts[0];
+            pts *= 1.2;
+          }
+        } else if (spins > 0) {
+          // sit-downs: flat spins only, carried off the lip
           parts.push(spins * 180 + ' SPIN');
           pts += 450 * spins;
         }

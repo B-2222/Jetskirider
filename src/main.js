@@ -457,12 +457,30 @@ class Game {
         if (this.state === 'ride' && this.spec.launchControl && !this.shownLaunchHint) {
           this.shownLaunchHint = true;
           this.showLaunchHint();
+        } else if (this.state === 'ride' && this.spec.standup && !this.shownStandupHint) {
+          this.shownStandupHint = true;
+          this.showStandupHint();
         }
       }, 9500);
     } else if (this.spec.launchControl && !this.shownLaunchHint) {
       this.shownLaunchHint = true;
       this.showLaunchHint();
+    } else if (this.spec.standup && !this.shownStandupHint) {
+      this.shownStandupHint = true;
+      this.showStandupHint();
     }
+  }
+
+  showStandupHint() {
+    const pad = this.input.usingGamepad;
+    this.showHint(
+      pad
+        ? 'Stand-up: no trim, lean into turns, hold ' + pb('A') + ' to slide. Big jump: ' + pb('B') + ' backflip (hold it through the lip), ' + pb('X') + ' Superman, ' + pb('X') + ' + steer barrel roll. Flat water: hold ' + pb('A') + ' slow to sink the nose, then ' + pb('B') + ' to pop.'
+        : this.mobile
+          ? 'Stand-up: no trim. Big jump: PULL BACK backflip, TRICK Superman. Flat water: hold SLIDE slow to sink the nose, then PULL BACK to pop.'
+          : 'Stand-up: no trim, lean into turns, hold <kbd>Shift</kbd> to slide. Big jump: <kbd>Space</kbd> backflip (hold it through the lip), <kbd>X</kbd> Superman, <kbd>X</kbd> + steer barrel roll. Flat water: hold <kbd>Shift</kbd> slow to sink the nose, then <kbd>Space</kbd> to pop.',
+      11
+    );
   }
 
   showLaunchHint() {
@@ -477,6 +495,10 @@ class Game {
     $('boostRow').hidden = !turbo;
     $('btnAls').hidden = !turbo;
     $('btnAls').classList.toggle('on', turbo && this.phys.als);
+    $('tTrick').hidden = !this.spec.standup;
+    // stand-ups have no trim system, so no VTS gauge
+    document.querySelector('#hud .vts').hidden = !!this.spec.standup;
+    $('trimVal').parentElement.hidden = !!this.spec.standup;
     $('alsTag').hidden = !(turbo && this.phys.als);
   }
 
@@ -654,6 +676,8 @@ class Game {
     if (T.uy < 0.12 && touching) w.flipT += dt;
     else w.flipT = Math.max(0, w.flipT - dt * 2);
     if (w.flipT > 0.3) return this.startWipeout('WIPEOUT');
+    // landed still stretched out in a Superman: off the back you go
+    if (this.spec.standup && T.superman > 0.45 && touching && !T.airborne) return this.startWipeout('BAILED');
     const im = this.effects.impactFlag || 0;
     if (im > 9.5 && (Math.abs(T.roll) > 0.75 || T.pitch < -0.6 || T.pitch > 1.25)) return this.startWipeout('WIPEOUT');
     if (T.ground > 0.3 && T.speed > 14 && this.terrain.heightAt(this.phys.px, this.phys.pz) > -0.3) return this.startWipeout('BEACHED IT');
@@ -671,7 +695,8 @@ class Game {
     const T = p.tele;
     const c = this.cam;
     const cam = this.camera;
-    const look = this.lookBack || this.input.padLook;
+    // on a stand-up, X is the trick button rather than look-behind
+    const look = this.lookBack || (this.input.padLook && !this.spec.standup);
     const target = this._v.set(p.px, p.py, p.pz);
     if (this.wipe.on) target.lerp(this.rider.group.position, 0.5);
 
@@ -856,7 +881,7 @@ class Game {
         const k = i - 4;
         b.classList.toggle('on', k === 0 || (lit > 0 && k > 0 && k <= lit) || (lit < 0 && k < 0 && k >= lit));
       });
-      u.trimVal.textContent = (lit > 0 ? '+' : '') + lit;
+      u.trimVal.textContent = this.spec.standup ? '—' : (lit > 0 ? '+' : '') + lit;
     }
     const pump = T.pumpLoad > 0.5 ? 'LOADED' : 'AIR';
     if (cch.pump !== pump) {
@@ -1009,6 +1034,10 @@ class Game {
   }
 
   ctlHint() {
+    if (this.spec.standup) {
+      if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · hold ' + pb('A') + ' to slide · ' + pb('B') + ' pull back · ' + pb('X') + ' trick';
+      return this.mobile ? 'Hold GAS to go. Lean into turns. PULL BACK and TRICK off big launches.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · hold <kbd>Shift</kbd> to slide · <kbd>Space</kbd> pull back · <kbd>X</kbd> trick';
+    }
     if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · ' + pb('LB') + pb('RB') + ' trim · ' + pb('B') + ' pull back · hold ' + pb('A') + ' to slide · ' + pb('X') + ' look back';
     return this.mobile ? 'Hold GAS to go. No gas means no steering. TRIM + for rooster tails.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>E</kbd>/<kbd>Q</kbd> trim · <kbd>Space</kbd> pull back · hold <kbd>Shift</kbd> to slide';
   }
@@ -1110,12 +1139,14 @@ class Game {
       p.ctrl.steer = ctl.steer;
       p.ctrl.lean = ctl.lean;
       p.ctrl.trimCmd = ctl.trimCmd;
+      p.ctrl.trick = ctl.trick;
     } else {
       p.ctrl.throttle = 0;
       p.ctrl.brake = 0;
       p.ctrl.steer = this.state === 'menu' ? Math.sin(now * 0.0006) * 0.5 : 0;
       p.ctrl.lean = 0;
       p.ctrl.trimCmd = 0;
+      p.ctrl.trick = 0;
     }
     this.input.endFrame();
 
@@ -1129,7 +1160,7 @@ class Game {
 
     this.syncSki();
     this.model.update(T, dt);
-    this.rider.update(dt, this.model, this.skiGroup, { steer: p.ctrl.steer, lean: p.ctrl.lean, tele: T, sea: SEA_STATES[this.seaIndex].scale });
+    this.rider.update(dt, this.model, this.skiGroup, { steer: p.ctrl.steer, lean: p.ctrl.lean, tele: T, sea: SEA_STATES[this.seaIndex].scale, superman: T.superman || 0 });
 
     // --- effects -----------------------------------------------------------
     this.effects.impactFlag = 0;

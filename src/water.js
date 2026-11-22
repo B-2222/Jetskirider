@@ -326,7 +326,8 @@ export class Ocean {
           // breaking surf: slope by finite differences, plus its whitewater
           float sFoam = 0.0, sTmp;
           float sH = surfField(vWorld.xz, sFoam);
-          if (sH != 0.0 || sFoam > 0.0) {
+          // slope only where a wave actually is (the field's far tails are ~0)
+          if (abs(sH) > 0.004 || sFoam > 0.01) {
             float se = 0.25;
             float sx = surfField(vWorld.xz + vec2(se, 0.0), sTmp);
             float sz = surfField(vWorld.xz + vec2(0.0, se), sTmp);
