@@ -22,7 +22,7 @@ Then go to `http://localhost:8000`.
 | `E` / `Q` | VTS trim up / down. Trim up for big rooster tails |
 | `Space` | Pull back: wheelies and tail stands (backflip on stand-ups) |
 | `Shift` | Slide: hold while turning to break the hull loose. Without it the ski carves |
-| `X` | Trick button on stand-ups: Superman, or barrel roll with steering |
+| `X` | Trick button: Superman in the air on sit-downs, barrel roll (with steering) on stand-ups |
 | `C` | Camera |
 | `F` | First person camera |
 | `B` | Look behind you (toggle) |
@@ -33,7 +33,7 @@ Then go to `http://localhost:8000`.
 | `T` / `V` | Change light / water |
 | `M` / `Esc` | Sound / garage |
 
-On the sit-down skis there are no in-air trick controls: to spin, throw the ski into a hard turn right at the lip and the rotation carries through the air. In the air `Space` / `Shift` only shift the rider's weight to nudge the nose.
+On the sit-down skis there is one trick in the air, the Superman: off a wave jump press `X` right after take-off and the rider hangs on to the bars with their legs kicked out behind the ski. Let go before you land or you bail. To spin, throw the ski into a hard turn right at the lip and the rotation carries through the air (a Superman on top makes it a SUPERMAN + 360). Otherwise `Space` / `Shift` only shift the rider's weight to nudge the nose.
 
 Touch controls work too.
 
@@ -46,7 +46,7 @@ Touch controls work too.
 | `A` (hold) | Slide |
 | `B` (hold) | Pull back (backflip on stand-ups) |
 | `RB` / `LB` | Trim up / down |
-| `X` | Hold to look behind (trick button on stand-ups) |
+| `X` | Hold to look behind (in the air: Superman on sit-downs, trick button on stand-ups) |
 | `Y` | Camera |
 | Right stick | Look around |
 | D-pad | Up: wave zone, Down: reset, Right: first person, Left: look-behind toggle |
@@ -58,8 +58,8 @@ In the garage the D-pad or left stick moves between buttons, `A` picks, `B` goes
 
 The Freestyle and Race stand-ups ride differently: no trim, a light hull that you lean right over into turns (`Shift` still slides it), no reverse, and a two-stroke engine. They flip.
 
-- Off a jump: `Space` backflip, `X` Superman, `X` + steer barrel roll, steer to spin. Let go once the rotation is under way and the rider lands it. Land still stretched out in a Superman and you bail.
-- A Superman fits a medium jump; flips and rolls need a big one. Hold `Space` up the face and through the lip for the biggest flips. The Freestyle rotates faster and can double off the biggest sets.
+- Off a jump: `Space` backflip, `X` + steer barrel roll, steer to spin. Let go once the rotation is under way and the rider lands it.
+- Flips need a decent wave jump; on a smaller one the rider tucks tighter to get round in time. If the jump really is too small (or you press too late) the game tells you. Hold `Space` up the face and through the lip for the biggest flips. The Freestyle rotates faster and can double off the biggest sets.
 - Flat-water backflip: at low speed hold `Shift` without steering to sink the nose, then hit `Space`. The nose pops out of the water; keep holding `Space` to flip.
 
 ## Online
@@ -85,4 +85,4 @@ Spark Trixx, Spark 2up, GTI SE 170, GTR 230, RXP-X 325, RXT-X 325, a 600 hp tune
 
 - `src/multiplayer.js`: online lobbies over the claude.ai room capability; `src/fakeroom.js` stands in for it locally (open the game with `?mpfake=1` in two tabs).
 
-`tools/` holds headless test helpers: `node tools/physics-test.mjs trixx`, `node tools/wave-test.mjs trixx`, `node tools/spin-test.mjs trixx airsteer`, `node tools/standup-test.mjs sfree` (stand-up flips, Supermans, rolls and the flat-water pop), `node tools/launch-test.mjs rxp`, `node tools/mp-test.mjs <dir>` (two players), `node tools/pad-test.mjs <dir>` (simulated Xbox controller) and `node tools/audio-render.mjs <dir> rxp600` (renders a scripted ride to WAV).
+`tools/` holds headless test helpers: `node tools/physics-test.mjs trixx`, `node tools/wave-test.mjs trixx`, `node tools/spin-test.mjs trixx airsteer`, `node tools/standup-test.mjs sfree` (stand-up flips, rolls, spins and the flat-water pop), `node tools/superman-test.mjs trixx` (sit-down Supermans), `node tools/launch-test.mjs rxp`, `node tools/mp-test.mjs <dir>` (two players), `node tools/pad-test.mjs <dir>` (simulated Xbox controller) and `node tools/audio-render.mjs <dir> rxp600` (renders a scripted ride to WAV).

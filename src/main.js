@@ -471,14 +471,30 @@ class Game {
     }
   }
 
+  // pressed for a trick the jump could not fit: say why, now and then
+  trickTryHint() {
+    const now = performance.now();
+    if (now - (this.lastTryHint || -1e9) < 9000 || (this.tryHints || 0) >= 6) return;
+    this.lastTryHint = now;
+    this.tryHints = (this.tryHints || 0) + 1;
+    const pad = this.input.usingGamepad;
+    if (this.spec.standup) {
+      const pull = pad ? 'hold ' + pb('B') : this.mobile ? 'hold PULL BACK' : 'hold <kbd>Space</kbd>';
+      this.showHint('Not enough air left to flip: hit a bigger wave flat out and ' + pull + ' as you leave the lip', 3);
+    } else {
+      const x = pad ? pb('X') : this.mobile ? 'TRICK' : '<kbd>X</kbd>';
+      this.showHint('Not enough air for a Superman: hit a bigger jump and press ' + x + ' right after take-off', 3);
+    }
+  }
+
   showStandupHint() {
     const pad = this.input.usingGamepad;
     this.showHint(
       pad
-        ? 'Stand-up: no trim, lean into turns, hold ' + pb('A') + ' to slide. Big jump: ' + pb('B') + ' backflip (hold it through the lip), ' + pb('X') + ' Superman, ' + pb('X') + ' + steer barrel roll. Flat water: hold ' + pb('A') + ' slow to sink the nose, then ' + pb('B') + ' to pop.'
+        ? 'Stand-up: no trim, lean into turns, hold ' + pb('A') + ' to slide. Big jump: hold ' + pb('B') + ' up the face and through the lip to backflip, ' + pb('X') + ' + steer barrel roll. Flat water: hold ' + pb('A') + ' slow to sink the nose, then ' + pb('B') + ' to pop.'
         : this.mobile
-          ? 'Stand-up: no trim. Big jump: PULL BACK backflip, TRICK Superman. Flat water: hold SLIDE slow to sink the nose, then PULL BACK to pop.'
-          : 'Stand-up: no trim, lean into turns, hold <kbd>Shift</kbd> to slide. Big jump: <kbd>Space</kbd> backflip (hold it through the lip), <kbd>X</kbd> Superman, <kbd>X</kbd> + steer barrel roll. Flat water: hold <kbd>Shift</kbd> slow to sink the nose, then <kbd>Space</kbd> to pop.',
+          ? 'Stand-up: no trim. Big jump: hold PULL BACK through the lip to backflip, TRICK + steer to barrel roll. Flat water: hold SLIDE slow to sink the nose, then PULL BACK to pop.'
+          : 'Stand-up: no trim, lean into turns, hold <kbd>Shift</kbd> to slide. Big jump: hold <kbd>Space</kbd> up the face and through the lip to backflip, <kbd>X</kbd> + steer barrel roll. Flat water: hold <kbd>Shift</kbd> slow to sink the nose, then <kbd>Space</kbd> to pop.',
       11
     );
   }
@@ -495,7 +511,7 @@ class Game {
     $('boostRow').hidden = !turbo;
     $('btnAls').hidden = !turbo;
     $('btnAls').classList.toggle('on', turbo && this.phys.als);
-    $('tTrick').hidden = !this.spec.standup;
+    $('tTrick').hidden = false; // Superman on sit-downs, barrel roll on stand-ups
     // stand-ups have no trim system, so no VTS gauge
     document.querySelector('#hud .vts').hidden = !!this.spec.standup;
     $('trimVal').parentElement.hidden = !!this.spec.standup;
@@ -677,7 +693,7 @@ class Game {
     else w.flipT = Math.max(0, w.flipT - dt * 2);
     if (w.flipT > 0.3) return this.startWipeout('WIPEOUT');
     // landed still stretched out in a Superman: off the back you go
-    if (this.spec.standup && T.superman > 0.45 && touching && !T.airborne) return this.startWipeout('BAILED');
+    if (T.superman > 0.45 && touching && !T.airborne) return this.startWipeout('BAILED');
     const im = this.effects.impactFlag || 0;
     if (im > 9.5 && (Math.abs(T.roll) > 0.75 || T.pitch < -0.6 || T.pitch > 1.25)) return this.startWipeout('WIPEOUT');
     if (T.ground > 0.3 && T.speed > 14 && this.terrain.heightAt(this.phys.px, this.phys.pz) > -0.3) return this.startWipeout('BEACHED IT');
@@ -696,7 +712,12 @@ class Game {
     const c = this.cam;
     const cam = this.camera;
     // on a stand-up, X is the trick button rather than look-behind
-    const look = this.lookBack || (this.input.padLook && !this.spec.standup);
+    // pad X: hold to look behind on the water. In the air a fresh press of X
+    // is a Superman on a sit-down, so only keep looking back if it was
+    // already held when the ski took off.
+    if (!T.airborne) this.lookHeldAir = true;
+    else if (!this.input.padLook) this.lookHeldAir = false;
+    const look = this.lookBack || (this.input.padLook && !this.spec.standup && this.lookHeldAir);
     const target = this._v.set(p.px, p.py, p.pz);
     if (this.wipe.on) target.lerp(this.rider.group.position, 0.5);
 
@@ -1035,11 +1056,11 @@ class Game {
 
   ctlHint() {
     if (this.spec.standup) {
-      if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · hold ' + pb('A') + ' to slide · ' + pb('B') + ' pull back · ' + pb('X') + ' trick';
-      return this.mobile ? 'Hold GAS to go. Lean into turns. PULL BACK and TRICK off big launches.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · hold <kbd>Shift</kbd> to slide · <kbd>Space</kbd> pull back · <kbd>X</kbd> trick';
+      if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · hold ' + pb('A') + ' to slide · ' + pb('B') + ' backflip · ' + pb('X') + ' + steer barrel roll';
+      return this.mobile ? 'Hold GAS to go. Lean into turns. PULL BACK off big launches to backflip.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · hold <kbd>Shift</kbd> to slide · <kbd>Space</kbd> backflip · <kbd>X</kbd> + steer barrel roll';
     }
-    if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · ' + pb('LB') + pb('RB') + ' trim · ' + pb('B') + ' pull back · hold ' + pb('A') + ' to slide · ' + pb('X') + ' look back';
-    return this.mobile ? 'Hold GAS to go. No gas means no steering. TRIM + for rooster tails.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>E</kbd>/<kbd>Q</kbd> trim · <kbd>Space</kbd> pull back · hold <kbd>Shift</kbd> to slide';
+    if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · ' + pb('LB') + pb('RB') + ' trim · ' + pb('B') + ' pull back · hold ' + pb('A') + ' to slide · ' + pb('X') + ' look back (Superman in the air)';
+    return this.mobile ? 'Hold GAS to go. No gas means no steering. TRIM + for rooster tails. TRICK in the air for a Superman.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>E</kbd>/<kbd>Q</kbd> trim · <kbd>Space</kbd> pull back · hold <kbd>Shift</kbd> to slide · <kbd>X</kbd> Superman in the air';
   }
 
   // keep the shared wave clock: tiny slews, a snap if it ever drifts far
@@ -1204,6 +1225,7 @@ class Game {
       else {
         this.tricks.update(dt, p);
         this.checkWipeout(dt);
+        if (T.trickTry) this.trickTryHint();
         // remember a safe spot to reset to
         this.safe.t += dt;
         if (this.safe.t > 1 && T.wet > 0.3 && T.uy > 0.8 && this.terrain.heightAt(p.px, p.pz) < -4) {

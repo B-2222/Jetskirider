@@ -477,11 +477,6 @@ export class Rider {
       hip.z += sd * 0.16;
       lean = 0.78 + lf * 0.25 - lb * 0.3 + clamp(T.pitch, -0.3, 1.2) * 0.5 + this.crouch;
       rollIn = sd * 0.55;
-      // Superman: hips up and back, body stretched out flat over the pole
-      hip.x -= sm * 0.12;
-      hip.y += sm * 0.3;
-      lean = lean + (1.42 - lean) * sm;
-      rollIn *= 1 - sm;
     } else {
       hip.y += 0.1 + st * 0.2 + lb * 0.1 + lf * 0.06;
       hip.x += -st * 0.04 - lb * 0.3 + lf * 0.14;
@@ -491,8 +486,16 @@ export class Rider {
       // world-upright when the ski stands on its tail
       lean = 0.42 + lf * 0.35 - lb * 0.1 + st * 0.12 + clamp(T.pitch, -0.3, 1.2) * 0.62 + this.crouch;
       rollIn = sd * 0.3;
+      if (sm > 0.001) {
+        // Superman: up off the seat, hanging on to the bars, body stretched
+        // out flat behind them
+        hip.x -= sm * 0.22;
+        hip.y += sm * 0.3;
+        lean += (1.45 - lean) * sm;
+        rollIn *= 1 - sm;
+      }
     }
-    lean = clamp(lean, -0.1, su ? 1.5 : 1.25);
+    lean = clamp(lean, -0.1, su || sm > 0.001 ? 1.5 : 1.25);
     const chest = this.chest;
     _c.set(Math.sin(lean), Math.cos(lean) * Math.cos(rollIn), Math.cos(lean) * Math.sin(rollIn));
     chest.copy(hip).addScaledVector(_c, DIM.torso);
@@ -582,9 +585,9 @@ export class Rider {
       const k = clamp(lb * 1.1 + (su ? 0 : st * 0.25), 0, 1);
       const foot = new THREE.Vector3().lerpVectors(f0, f1, k);
       foot.x -= lf * -0.06;
-      if (su && sm > 0.01) {
-        // Superman: legs straight out behind, off the tray
-        const out = new THREE.Vector3(hip.x - 0.92, hip.y + 0.04, hip.z + sgn * 0.1);
+      if (sm > 0.01) {
+        // Superman: legs straight out behind, off the back of the seat
+        const out = new THREE.Vector3(hip.x - 0.92, hip.y + 0.05, hip.z + sgn * 0.12);
         foot.lerp(out, sm);
       }
       const ankle = new THREE.Vector3(foot.x - 0.05, foot.y + 0.07, foot.z);
@@ -599,7 +602,7 @@ export class Rider {
       leg.knee.position.copy(kn);
       leg.hipJ.position.copy(hj);
       leg.foot.position.set(an.x + 0.06 * (1 - sm), an.y - 0.045 * (1 - sm), an.z);
-      leg.foot.rotation.set(0, 0, su ? sm * 1.45 : 0);
+      leg.foot.rotation.set(0, 0, sm * 1.45);
     }
   }
 }

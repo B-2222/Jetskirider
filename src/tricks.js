@@ -1,5 +1,5 @@
 // Trick detection + scoring: powerslides, 180s / 360s, wheelies and tail
-// stands, air time, flips and spins off ramps and wave faces.
+// stands, air time, Supermans, flips and spins off ramps and wave faces.
 
 import { wrapAngle } from './util.js';
 
@@ -200,14 +200,10 @@ export class Tricks {
         const parts = [];
         let pts = a.time * 180 + Math.min(a.maxH, 10) * 40;
         if (phys.spec.standup) {
-          // stand-ups flip, roll and stretch out; a rotation counts once it
-          // is ~80% done (the rider finishes it on the way down)
+          // stand-ups flip and roll; a rotation counts once it is ~80% done
+          // (the rider finishes it on the way down)
           const flips = Math.floor(Math.abs(a.pitch) / (Math.PI * 2) + 0.2);
           const rolls = Math.floor(Math.abs(a.roll) / (Math.PI * 2) + 0.2);
-          if (a.sm > 0.25) {
-            parts.push('SUPERMAN');
-            pts += 700 + a.sm * 600;
-          }
           if (flips > 0) {
             parts.push((flips > 1 ? 'DOUBLE ' : '') + (a.pitch > 0 ? 'BACKFLIP' : 'FRONTFLIP'));
             pts += 1500 * flips;
@@ -225,10 +221,17 @@ export class Tricks {
             parts[0] = 'FLATWATER ' + parts[0];
             pts *= 1.2;
           }
-        } else if (spins > 0) {
-          // sit-downs: flat spins only, carried off the lip
-          parts.push(spins * 180 + ' SPIN');
-          pts += 450 * spins;
+        } else {
+          // sit-downs: Supermans, and flat spins carried off the lip
+          if (a.sm > 0.25) {
+            parts.push('SUPERMAN');
+            pts += 700 + a.sm * 600;
+          }
+          if (spins > 0) {
+            parts.push(spins * 180 + (parts.length ? '' : ' SPIN'));
+            pts += 450 * spins;
+          }
+          if (parts.length > 1) pts *= 1.3;
         }
         let label = parts.length ? parts.join(' + ') : a.time > 1.6 ? 'HUGE AIR' : a.time > 1.0 ? 'BIG AIR' : 'AIR';
         if (a.wave) {
