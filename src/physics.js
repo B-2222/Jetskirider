@@ -264,7 +264,7 @@ export class SkiPhysics {
     {
       // c.lean > 0 is the slide button: only then does the rider throw the
       // hull over. Without it the ski stays hooked up and carves.
-      const want = c.lean > 0 && Math.abs(c.steer) > 0.3 && Math.hypot(this.vx, this.vz) > 4;
+      const want = c.lean > 0.5 && Math.abs(c.steer) > 0.3 && Math.hypot(this.vx, this.vz) > 4;
       const rate = want ? this.leanRate * (1 + trimFrac * 0.5) : -2.5;
       this.leanIn = clamp(this.leanIn + rate * dt, 0, 1);
     }

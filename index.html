@@ -12,6 +12,7 @@
 <body>
 <div id="app">
   <canvas id="gl" aria-label="Jetski Rider game view"></canvas>
+  <div id="tags" aria-hidden="true"></div>
 
   <div id="loading"><div class="load-inner"><div class="load-title">JETSKI RIDER</div><div class="load-sub" id="loadText">Filling the lagoon…</div></div></div>
 
@@ -30,6 +31,12 @@
         <button class="icon-btn" id="btnMute" title="Sound on/off (M)">SND</button>
         <button class="icon-btn" id="btnPause" title="Garage / pause (Esc)">MENU</button>
       </div>
+    </div>
+
+    <div class="mp-panel" id="mpPanel" hidden>
+      <div class="mp-title" id="mpTitle">LOBBY 1</div>
+      <ol class="mp-board" id="mpBoard"></ol>
+      <div class="mp-feed" id="mpFeed"></div>
     </div>
 
     <div class="trick-zone">
@@ -105,6 +112,12 @@
         <div class="row"><span class="lbl">LIGHT</span><div class="seg" id="segTime"></div></div>
       </section>
 
+      <section class="mp" aria-label="Ride online">
+        <div class="row"><span class="lbl">ONLINE</span><div class="seg" id="mpLobbies"><button id="mpL1" disabled>Lobby 1</button><button id="mpL2" disabled>Lobby 2</button></div></div>
+        <div class="row"><label class="lbl" for="mpName">NAME</label><input id="mpName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Your name"></div>
+        <p class="mp-status" id="mpStatus">Connecting…</p>
+      </section>
+
       <div class="menu-actions">
         <button class="go" id="btnRide">RIDE</button>
         <button class="ghost" id="btnHelp">CONTROLS</button>
@@ -130,6 +143,19 @@
         <div><kbd>G</kbd></div><div>Go to the wave zone (and back)</div>
         <div><kbd>T</kbd> / <kbd>V</kbd></div><div>Change light / water</div>
         <div><kbd>M</kbd> · <kbd>Esc</kbd></div><div>Sound · Garage</div>
+      </div>
+      <h3>XBOX CONTROLLER</h3>
+      <div class="help-grid pad-grid">
+        <div><span class="pb pb-RT">RT</span> <span class="pb pb-LT">LT</span></div><div>Gas · brake and reverse (both analog)</div>
+        <div><span class="pb pb-LS">LS</span></div><div>Steer. Push down to pull back, up to lean forward</div>
+        <div><span class="pb pb-A">A</span> <span class="pb pb-B">B</span></div><div>Hold to slide · hold to pull back (wheelies)</div>
+        <div><span class="pb pb-LB">LB</span> <span class="pb pb-RB">RB</span></div><div>Trim down · trim up</div>
+        <div><span class="pb pb-X">X</span> <span class="pb pb-Y">Y</span></div><div>Hold to look behind · change camera</div>
+        <div><span class="pb pb-RS">RS</span></div><div>Look around · click for first person</div>
+        <div><span class="pb pb-UP">▲</span> <span class="pb pb-DOWN">▼</span></div><div>Wave zone · reset</div>
+        <div><span class="pb pb-LEFT">◀</span> <span class="pb pb-RIGHT">▶</span></div><div>Look-behind toggle · first person</div>
+        <div><span class="pb pb-VIEW">VIEW</span> <span class="pb pb-MENU">MENU</span></div><div>Rolling anti-lag · garage</div>
+        <div>In the garage</div><div>D-pad moves, <span class="pb pb-A">A</span> selects, <span class="pb pb-LB">LB</span> <span class="pb pb-RB">RB</span> change ski, <span class="pb pb-MENU">MENU</span> rides</div>
       </div>
       <h3>TRICKS</h3>
       <ul>

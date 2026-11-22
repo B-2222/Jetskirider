@@ -2,6 +2,9 @@
 
 import { clamp, damp } from './util.js';
 
+// Standard gamepad mapping (Xbox layout)
+export const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, VIEW: 8, MENU: 9, LS: 10, RS: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
+
 export class Input {
   constructor(touchRoot) {
     this.keys = new Set();
@@ -12,9 +15,25 @@ export class Input {
     this.usingGamepad = false;
     this.enabled = true;
     this._padPrev = [];
+    this.padPressed = new Set(); // gamepad buttons pressed this frame (100+ = stick flick)
+    this.padLook = false; // X held: look behind
+    this.camStick = { x: 0, y: 0 };
+    this.padIndex = -1;
+    this.padBlocked = false;
+    this.onPadChange = null;
+    this._rumbleT = 0;
+    this._impactUntil = 0;
+    addEventListener('gamepadconnected', (e) => {
+      if (e.gamepad && e.gamepad.mapping === 'standard') this.padIndex = e.gamepad.index;
+      if (this.onPadConnect) this.onPadConnect(e.gamepad);
+    });
 
     addEventListener('keydown', (e) => {
       if (e.repeat) return;
+      if (this.usingGamepad) {
+        this.usingGamepad = false;
+        if (this.onPadChange) this.onPadChange(false);
+      }
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       this.keys.add(e.code);
@@ -84,6 +103,55 @@ export class Input {
     return this.pressed.has(code);
   }
 
+  // gamepad button (PAD.*) pressed this frame; D-pad also answers to stick flicks
+  padWas(i) {
+    return this.padPressed.has(i) || (i >= PAD.UP && i <= PAD.RIGHT && this.padPressed.has(100 + i));
+  }
+
+  readPad() {
+    let pads;
+    try {
+      pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    } catch {
+      // a frame that is not allowed to use gamepads
+      this.padBlocked = true;
+      return null;
+    }
+    let pad = this.padIndex >= 0 ? pads[this.padIndex] : null;
+    if (!pad || !pad.connected) {
+      pad = null;
+      for (const p of pads) {
+        if (p && p.connected && p.axes.length >= 2 && (!pad || p.mapping === 'standard')) pad = p;
+      }
+      if (pad) this.padIndex = pad.index;
+    }
+    this.pad = pad;
+    return pad;
+  }
+
+  // dual-motor rumble; quietly does nothing where unsupported
+  rumble(strong, weak, ms, impact = true) {
+    const pad = this.pad;
+    const act = pad && pad.vibrationActuator;
+    if (!act || !this.usingGamepad) return;
+    if (impact) this._impactUntil = performance.now() + ms;
+    try {
+      const r = act.playEffect('dual-rumble', { startDelay: 0, duration: ms, strongMagnitude: Math.min(1, strong), weakMagnitude: Math.min(1, weak) });
+      if (r && r.catch) r.catch(() => {});
+    } catch {
+      /* not supported */
+    }
+  }
+
+  // a light continuous buzz that follows the engine; impacts take priority
+  rumbleEngine(level, dt) {
+    this._rumbleT -= dt;
+    if (this._rumbleT > 0 || performance.now() < this._impactUntil) return;
+    this._rumbleT = 0.1;
+    if (level < 0.02) return;
+    this.rumble(level * 0.1, level * 0.3, 140, false);
+  }
+
   endFrame() {
     this.pressed.clear();
   }
@@ -102,36 +170,72 @@ export class Input {
     let trim = (down('KeyE', 'PageUp') ? 1 : 0) - (down('KeyQ', 'PageDown') ? 1 : 0);
     let analog = false;
 
-    // gamepad
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    let pad = null;
-    for (const p of pads) if (p && p.connected && p.axes.length >= 2) pad = p;
+    // ---- Xbox / standard-mapping gamepad ---------------------------------
+    // RT gas, LT brake/reverse, left stick steer (and lean), A slide,
+    // B pull back, LB/RB trim, X look behind (hold), Y camera, right stick
+    // looks around, View anti-lag, Menu garage, D-pad shortcuts.
+    this.padPressed.clear();
+    this.padLook = false;
+    this.camStick.x = this.camStick.y = 0;
+    const pad = this.readPad();
     if (pad) {
-      const dz = (v) => (Math.abs(v) < 0.12 ? 0 : (v - Math.sign(v) * 0.12) / 0.88);
+      const P = PAD;
       const b = (i) => (pad.buttons[i] ? pad.buttons[i].value : 0);
-      const ax = dz(pad.axes[0]);
-      const ay = dz(pad.axes[1] || 0);
-      const rt = Math.max(b(7), b(0) > 0.5 ? 1 : 0);
-      const lt = Math.max(b(6), b(2) > 0.5 ? 1 : 0);
-      if (Math.abs(ax) > 0 || rt > 0.05 || lt > 0.05 || Math.abs(ay) > 0) this.usingGamepad = true;
+      const down = (i) => b(i) > 0.5;
+      // radial deadzone for the sticks, small one for the triggers
+      const stick = (ix, iy, dzr = 0.14) => {
+        const x = pad.axes[ix] || 0;
+        const y = pad.axes[iy] || 0;
+        const m = Math.hypot(x, y);
+        if (m < dzr) return [0, 0];
+        const k = Math.min(1, (m - dzr) / (1 - dzr)) / m;
+        return [x * k, y * k];
+      };
+      const [lx, ly] = stick(0, 1);
+      const [rx, ry] = stick(2, 3, 0.18);
+      const rt = Math.max(0, (b(P.RT) - 0.04) / 0.96);
+      const lt = Math.max(0, (b(P.LT) - 0.04) / 0.96);
+      // edges
+      for (let i = 0; i < pad.buttons.length && i < 17; i++) {
+        const v = down(i);
+        if (v && !this._padPrev[i]) this.padPressed.add(i);
+        this._padPrev[i] = v;
+      }
+      // left-stick flicks count as D-pad presses (menus), with repeat
+      const flick = (Math.abs(lx) > 0.6 || Math.abs(ly) > 0.6) ? (Math.abs(lx) > Math.abs(ly) ? (lx > 0 ? P.RIGHT : P.LEFT) : (ly > 0 ? P.DOWN : P.UP)) : -1;
+      if (flick !== this._flick) {
+        this._flick = flick;
+        this._flickT = 0.4;
+        if (flick >= 0) this.padPressed.add(100 + flick);
+      } else if (flick >= 0) {
+        this._flickT -= dt;
+        if (this._flickT <= 0) {
+          this._flickT = 0.14;
+          this.padPressed.add(100 + flick);
+        }
+      }
+      const active = Math.abs(lx) > 0 || Math.abs(rx) > 0 || rt > 0.05 || lt > 0.05 || this.padPressed.size > 0;
+      if (active && !this.usingGamepad) {
+        this.usingGamepad = true;
+        if (this.onPadChange) this.onPadChange(true);
+      }
       if (this.usingGamepad) {
-        if (Math.abs(ax) > 0) {
-          steerT = Math.sign(ax) * Math.pow(Math.abs(ax), 1.5);
+        if (Math.abs(lx) > 0) {
+          steerT = Math.sign(lx) * Math.pow(Math.abs(lx), 1.4);
           analog = true;
         }
         throttle = Math.max(throttle, rt);
         brake = Math.max(brake, lt);
-        if (Math.abs(ay) > 0.25) lean = ay < 0 ? 1 : -1;
-        if (b(1) > 0.5) lean = -1;
-        if (b(3) > 0.5) lean = 1;
-        trim += (b(12) > 0.5 || b(5) > 0.5 ? 1 : 0) - (b(13) > 0.5 || b(4) > 0.5 ? 1 : 0);
-        // edge-triggered buttons -> virtual key presses
-        const map = { 9: 'Escape', 8: 'KeyC', 3: null };
-        for (const i of [8, 9]) {
-          const v = b(i) > 0.5;
-          if (v && !this._padPrev[i]) this.pressed.add(map[i]);
-          this._padPrev[i] = v;
-        }
+        // A slides, B pulls back; the stick leans too (forward only nudges,
+        // so it never starts a slide by accident)
+        if (down(P.A)) lean = 1;
+        else if (down(P.B)) lean = -1;
+        else if (ly > 0.3) lean = -Math.min(1, (ly - 0.3) / 0.6);
+        else if (ly < -0.3) lean = Math.min(1, (-ly - 0.3) / 0.6) * 0.45;
+        trim += (down(P.RB) ? 1 : 0) - (down(P.LB) ? 1 : 0);
+        this.padLook = down(P.X);
+        this.camStick.x = rx;
+        this.camStick.y = ry;
       }
     }
 

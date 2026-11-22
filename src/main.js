@@ -15,7 +15,8 @@ import { SkiEffects } from './effects.js';
 import { JetskiModel } from './jetski.js';
 import { Rider } from './rider.js';
 import { buildTerrainMesh, buildVegetation, buildRampMesh, buildZoneArch, Buoys } from './scenery.js';
-import { Input } from './input.js';
+import { Input, PAD } from './input.js';
+import { Multiplayer, LOBBIES, MAX_PER_LOBBY } from './multiplayer.js';
 import { Audio } from './audio.js';
 import { Tricks } from './tricks.js';
 
@@ -40,6 +41,10 @@ const store = {
 };
 
 const SPAWN = { x: 0, z: -150, yaw: -Math.PI / 2 };
+
+// Xbox button glyph for hints
+const PB_LABEL = { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', LT: 'LT', RT: 'RT', LS: 'LS', RS: 'RS', VIEW: 'VIEW', MENU: 'MENU', UP: '▲', DOWN: '▼', LEFT: '◀', RIGHT: '▶' };
+const pb = (k) => `<span class="pb pb-${k}">${PB_LABEL[k]}</span>`;
 // wave zone entry: downwave of the swell, pointing into it
 const ZONE_IN = (() => {
   const hx = -Math.cos(WAVE_ZONE.dir);
@@ -116,7 +121,7 @@ class Game {
     this.scene.add(this.buoys.group);
     this.scene.add(buildZoneArch(ZONE_IN.x + ZONE_IN.hx * 30, ZONE_IN.z + ZONE_IN.hz * 30, ZONE_IN.yaw));
 
-    this.spray = new Spray({ max: coarse ? 9000 : 18000, noiseTex: this.noiseTex });
+    this.spray = new Spray({ max: coarse ? 11000 : 30000, noiseTex: this.noiseTex });
     this.scene.add(this.spray.mesh);
     this.breakers = new Breakers({ waves: this.waves, ocean: this.ocean, sky: this.sky, spray: this.spray, foam: this.foam });
     this.scene.add(this.breakers.mesh);
@@ -134,7 +139,16 @@ class Game {
     this.input = new Input($('touch'));
     this.audio = new Audio();
     this.buildSki();
-    this.tricks = new Tricks((label, pts, kind, combo) => this.popTrick(label, pts, kind));
+    this.tricks = new Tricks((label, pts, kind, combo) => {
+      this.popTrick(label, pts, kind);
+      if (kind !== 'note' && this.mp) this.mp.noteTrick(label, pts);
+    });
+    this.mp = new Multiplayer(this);
+    this.mp.onChange = () => this.refreshMp();
+    this.input.onPadChange = () => this.refreshPadUi();
+    this.input.onPadConnect = (gp) => {
+      if (gp && gp.mapping === 'standard') this.showHint('Controller connected. ' + this.ctlHint(), 6);
+    };
     this.tricks.zoneAt = (x, z) => this.waves.zoneMask(x, z);
     this.tricks.barrelAt = (x, z) => this.waves.surf.barrelAt(x, z, this.phys.time);
     this.inZone = false;
@@ -158,8 +172,12 @@ class Game {
 
     this.applySea(true);
     this.applyTime();
+    // one wave clock for everyone, so friends in a lobby see the same surf
+    // (start a second early: the settle below runs the clock forward)
+    this.phys.time = this.mp.worldTime() - 1;
     this.phys.reset(SPAWN.x, SPAWN.z, SPAWN.yaw);
     this.setupUI();
+    this.refreshMp();
     this.setupPointerOrbit();
     addEventListener('resize', () => this.resize());
     this.resize();
@@ -283,6 +301,7 @@ class Game {
     this.envTex = this.sky.makeEnvironment(this.renderer);
     this.scene.environment = this.envTex;
     this.applyEnv();
+    if (this.mp) for (const r of this.mp.remotes.values()) r.applyEnv();
     store.set('tod', this.timeIndex);
   }
 
@@ -346,6 +365,12 @@ class Game {
     $('btnCam').addEventListener('click', () => this.nextCam());
     $('btnRear').addEventListener('click', () => this.toggleLookBack());
     $('btnAls').addEventListener('click', () => this.toggleAls());
+    LOBBIES.forEach((l, i) => $('mpL' + (i + 1)).addEventListener('click', () => this.toggleLobby(l.id)));
+    $('mpName').addEventListener('change', (e) => this.mp.setNick(e.target.value));
+    $('mpName').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') e.target.blur();
+      e.stopPropagation();
+    });
     $('btnMute').addEventListener('click', () => this.toggleMute());
     this.refreshMenu();
     this.ui = {
@@ -427,7 +452,7 @@ class Game {
     this.syncSkiHud();
     if (!this.shownHint) {
       this.shownHint = true;
-      this.showHint(this.mobile ? 'Hold GAS to go. No gas means no steering. TRIM + for rooster tails.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>E</kbd>/<kbd>Q</kbd> trim · <kbd>Space</kbd> pull back · hold <kbd>Shift</kbd> to slide', 9);
+      this.showHint(this.ctlHint(), 9);
       setTimeout(() => {
         if (this.state === 'ride' && this.spec.launchControl && !this.shownLaunchHint) {
           this.shownLaunchHint = true;
@@ -441,8 +466,9 @@ class Game {
   }
 
   showLaunchHint() {
-    const als = this.spec.turbo ? (this.mobile ? ' ALS button: rolling anti-lag.' : ' <kbd>N</kbd> rolling anti-lag.') : '';
-    this.showHint((this.mobile ? 'Launch control: hold BRAKE + GAS stopped, let go of BRAKE to launch.' : 'Launch control: hold <kbd>S</kbd> + <kbd>W</kbd> stopped, let go of <kbd>S</kbd> to launch.') + als, 8);
+    const pad = this.input.usingGamepad;
+    const als = this.spec.turbo ? (pad ? ' ' + pb('VIEW') + ' rolling anti-lag.' : this.mobile ? ' ALS button: rolling anti-lag.' : ' <kbd>N</kbd> rolling anti-lag.') : '';
+    this.showHint((pad ? 'Launch control: hold ' + pb('LT') + ' + ' + pb('RT') + ' stopped, let go of ' + pb('LT') + ' to launch.' : this.mobile ? 'Launch control: hold BRAKE + GAS stopped, let go of BRAKE to launch.' : 'Launch control: hold <kbd>S</kbd> + <kbd>W</kbd> stopped, let go of <kbd>S</kbd> to launch.') + als, 8);
   }
 
   // show the turbo / launch-control bits of the HUD for the current ski
@@ -558,6 +584,7 @@ class Game {
     w.spin.set((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 6 - 3);
     this.audio.splash(0.8);
     this.cam.shake = 1;
+    this.input.rumble(1, 1, 450);
   }
 
   updateWipeout(dt) {
@@ -644,6 +671,7 @@ class Game {
     const T = p.tele;
     const c = this.cam;
     const cam = this.camera;
+    const look = this.lookBack || this.input.padLook;
     const target = this._v.set(p.px, p.py, p.pz);
     if (this.wipe.on) target.lerp(this.rider.group.position, 0.5);
 
@@ -696,14 +724,20 @@ class Game {
     const want = Math.atan2(-dz, dx);
     const diff = wrapAngle(want - c.yaw);
     c.yaw = snap ? want : c.yaw + diff * (1 - Math.exp(-dt * (2.2 + spd * 0.12)));
-    if (c.userT > 0 && !this._orbiting()) c.userT -= dt;
+    const cs = this.input.camStick;
+    if (this.state === 'ride' && (cs.x || cs.y)) {
+      c.userYaw -= cs.x * dt * 2.8;
+      c.userPitch = clamp(c.userPitch + cs.y * dt * 1.4, -0.25, 0.7);
+      c.userT = 0.9;
+    }
+    if (c.userT > 0 && !this._orbiting() && !(cs.x || cs.y)) c.userT -= dt;
     if (c.userT <= 0) {
       c.userYaw = damp(c.userYaw, 0, 0.35, dt);
       c.userPitch = damp(c.userPitch, 0, 0.35, dt);
     }
     // swing out to a rear three-quarter view when the rooster tail is up so you can see it
     c.rooster = damp(c.rooster || 0, clamp(this.effects.rooster * 1.6, 0, 1) * smoothstep(4, 12, spd), 0.9, dt);
-    const yaw = c.yaw + c.userYaw + c.rooster * 0.62 + (this.lookBack ? Math.PI : 0);
+    const yaw = c.yaw + c.userYaw + c.rooster * 0.62 + (look ? Math.PI : 0);
     const fx = Math.cos(yaw);
     const fz = -Math.sin(yaw);
 
@@ -729,15 +763,15 @@ class Game {
       let hx = p.fhx * c0 + p.fhz * s0;
       let hz = p.fhz * c0 - p.fhx * s0;
       let pitch = clamp(T.pitch, -0.6, 1.2) * 0.55 - 0.24;
-      if (this.lookBack) {
+      if (look) {
         // turn round to look over your shoulder at the wake
         hx = -p.fhx;
         hz = -p.fhz;
         pitch = -clamp(T.pitch, -0.6, 1.2) * 0.4 - 0.1;
       }
       const dir = new THREE.Vector3(hx * Math.cos(pitch), Math.sin(pitch), hz * Math.cos(pitch));
-      eye.addScaledVector(dir, this.lookBack ? -0.05 : 0.05);
-      eye.y += this.lookBack ? 0.1 : 0.05;
+      eye.addScaledVector(dir, look ? -0.05 : 0.05);
+      eye.y += look ? 0.1 : 0.05;
       cam.position.copy(eye);
       cam.up.set(T.ux, T.uy, T.uz).lerp(new THREE.Vector3(0, 1, 0), 0.65).normalize();
       const prev = cam.quaternion.clone();
@@ -796,6 +830,7 @@ class Game {
 
   // ------------------------------------------------------------------ HUD
   updateHUD(dt) {
+    this.updateBoard(dt);
     const T = this.phys.tele;
     const u = this.ui;
     const cch = this.uiCache;
@@ -882,9 +917,179 @@ class Game {
         this.showHint(this.inZone ? 'Back to the lagoon' : 'Wave zone. Ride into the swell flat out.', 2.2);
       }
     } else if (this.state === 'menu') {
-      if (inp.was('ArrowRight')) this.selectSki(this.skiIndex + 1);
-      if (inp.was('ArrowLeft')) this.selectSki(this.skiIndex - 1);
+      if (inp.was('ArrowRight') && !this.padFocusEl) this.selectSki(this.skiIndex + 1);
+      if (inp.was('ArrowLeft') && !this.padFocusEl) this.selectSki(this.skiIndex - 1);
     }
+    this.handlePad();
+  }
+
+  // ---------------------------------------------------------------- gamepad
+  handlePad() {
+    const inp = this.input;
+    if (!inp.padPressed.size) return;
+    const helpOpen = !$('help').hidden;
+    if (this.state === 'ride' && !helpOpen) {
+      if (inp.padWas(PAD.MENU)) return this.openMenu();
+      if (inp.padWas(PAD.Y)) this.nextCam();
+      if (inp.padWas(PAD.VIEW)) this.toggleAls();
+      if (inp.padWas(PAD.RS) || inp.padPressed.has(PAD.RIGHT)) this.setCam(this.camMode === 4 ? 0 : 4);
+      if (inp.padPressed.has(PAD.LEFT)) this.toggleLookBack();
+      if (inp.padPressed.has(PAD.DOWN) && !this.wipe.on) this.respawn(true);
+      if (inp.padPressed.has(PAD.UP) && !this.wipe.on) {
+        this.teleport(this.inZone ? 'lagoon' : 'zone');
+        this.showHint(this.inZone ? 'Back to the lagoon' : 'Wave zone. Ride into the swell flat out.', 2.2);
+      }
+      return;
+    }
+    // garage / help: move a highlight with the D-pad or stick, A presses it
+    for (const [b, dx, dy] of [[PAD.UP, 0, -1], [PAD.DOWN, 0, 1], [PAD.LEFT, -1, 0], [PAD.RIGHT, 1, 0]]) {
+      if (inp.padWas(b)) this.padNav(dx, dy);
+    }
+    if (inp.padWas(PAD.A) && this.padFocusEl && document.contains(this.padFocusEl)) this.padFocusEl.click();
+    if (inp.padWas(PAD.B)) {
+      if (helpOpen) $('help').hidden = true;
+      else if (this.hasRidden) this.ride();
+    }
+    if (inp.padWas(PAD.MENU)) {
+      if (helpOpen) $('help').hidden = true;
+      else this.ride();
+    }
+    if (!helpOpen && inp.padWas(PAD.RB)) this.selectSki(this.skiIndex + 1);
+    if (!helpOpen && inp.padWas(PAD.LB)) this.selectSki(this.skiIndex - 1);
+    if (!helpOpen && inp.padWas(PAD.Y)) $('help').hidden = false;
+  }
+
+  padNav(dx, dy) {
+    const root = !$('help').hidden ? $('help') : $('menu');
+    const items = [...root.querySelectorAll('button, input')].filter((el) => el.offsetParent !== null && !el.disabled);
+    if (!items.length) return;
+    let cur = this.padFocusEl;
+    if (!cur || !items.includes(cur)) return this.setPadFocus(root.querySelector('.go') || items[0]);
+    const a = cur.getBoundingClientRect();
+    const ax = a.left + a.width / 2;
+    const ay = a.top + a.height / 2;
+    let best = null;
+    let bestScore = 1e9;
+    for (const el of items) {
+      if (el === cur) continue;
+      const r = el.getBoundingClientRect();
+      const ox = r.left + r.width / 2 - ax;
+      const oy = r.top + r.height / 2 - ay;
+      const along = ox * dx + oy * dy;
+      if (along <= 4) continue;
+      const across = Math.abs(ox * dy - oy * dx);
+      const score = along + across * 2.2;
+      if (score < bestScore) {
+        bestScore = score;
+        best = el;
+      }
+    }
+    if (best) this.setPadFocus(best);
+  }
+
+  setPadFocus(el) {
+    if (this.padFocusEl) this.padFocusEl.classList.remove('pad-focus');
+    this.padFocusEl = el;
+    if (!el) return;
+    el.classList.add('pad-focus');
+    try {
+      el.focus({ preventScroll: true });
+    } catch {
+      /* ignore */
+    }
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  // controller or keyboard glyphs in hints and help
+  refreshPadUi() {
+    const on = this.input.usingGamepad;
+    document.body.classList.toggle('pad', on);
+    if (!on && this.padFocusEl) this.setPadFocus(null);
+    if (on && this.state === 'menu' && !this.padFocusEl) this.setPadFocus($('btnRide'));
+  }
+
+  ctlHint() {
+    if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · ' + pb('LB') + pb('RB') + ' trim · ' + pb('B') + ' pull back · hold ' + pb('A') + ' to slide · ' + pb('X') + ' look back';
+    return this.mobile ? 'Hold GAS to go. No gas means no steering. TRIM + for rooster tails.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>E</kbd>/<kbd>Q</kbd> trim · <kbd>Space</kbd> pull back · hold <kbd>Shift</kbd> to slide';
+  }
+
+  // keep the shared wave clock: tiny slews, a snap if it ever drifts far
+  syncWorldClock(dt) {
+    const p = this.phys;
+    let drift = this.mp.worldTime() - p.time;
+    if (drift < -1800) drift += 3600;
+    else if (drift > 1800) drift -= 3600;
+    if (Math.abs(drift) > 0.3) {
+      p.time = this.mp.worldTime();
+      this.foam.clear();
+    } else p.time += drift * Math.min(1, dt * 0.8);
+    if (p.time >= 3600) p.time -= 3600;
+  }
+
+  // ------------------------------------------------------------ multiplayer
+  refreshMp() {
+    const mp = this.mp;
+    const st = $('mpStatus');
+    const counts = mp.counts();
+    LOBBIES.forEach((l, i) => {
+      const b = $('mpL' + (i + 1));
+      const n = counts[l.id] || 0;
+      const inIt = mp.lobbyId === l.id;
+      b.textContent = inIt ? l.name + ' · LEAVE' : l.name + ' · ' + n + '/' + MAX_PER_LOBBY;
+      b.setAttribute('aria-pressed', inIt ? 'true' : 'false');
+      b.disabled = mp.status !== 'ready' || mp.joining || (!inIt && n >= MAX_PER_LOBBY);
+    });
+    if (mp.status === 'offline') st.textContent = 'Online riding works on the shared claude.ai link, signed in.';
+    else if (mp.status === 'connecting') st.textContent = 'Connecting…';
+    else if (mp.joining) st.textContent = 'Joining…';
+    else if (mp.lobbyId) st.textContent = 'You are in ' + LOBBIES.find((l) => l.id === mp.lobbyId).name + '. Everyone here rides the same waves.';
+    else st.textContent = 'Pick a lobby to ride with friends (up to ' + MAX_PER_LOBBY + ' each).';
+    const nameEl = $('mpName');
+    if (document.activeElement !== nameEl && nameEl.value !== mp.nick) nameEl.value = mp.nick;
+    nameEl.disabled = mp.status !== 'ready';
+    $('mpPanel').hidden = !mp.lobbyId;
+    this.boardT = 0;
+  }
+
+  async toggleLobby(id) {
+    const mp = this.mp;
+    if (mp.lobbyId === id) {
+      await mp.leaveLobby();
+      this.showHint('Left the lobby. Riding solo.', 2);
+      return;
+    }
+    const r = await mp.joinLobby(id);
+    if (r === 'full') this.showHint('That lobby is full.', 2);
+    else if (r === 'ok') {
+      // spread everyone out at the start line
+      const off = (Math.random() - 0.5) * 30;
+      this.phys.reset(SPAWN.x + off, SPAWN.z + Math.random() * 10, SPAWN.yaw);
+      this.syncSki();
+      this.snapCamera();
+    } else if (r === 'error') this.showHint('Could not join right now. Try again in a moment.', 2.5);
+  }
+
+  updateBoard(dt) {
+    this.boardT = (this.boardT || 0) - dt;
+    if (this.boardT > 0 || !this.mp.lobbyId) return;
+    this.boardT = 0.25;
+    const rows = this.mp.board();
+    const lobby = LOBBIES.find((l) => l.id === this.mp.lobbyId);
+    $('mpTitle').textContent = lobby.name.toUpperCase() + ' · ' + rows.length + (rows.length === 1 ? ' RIDER' : ' RIDERS');
+    const ol = $('mpBoard');
+    while (ol.children.length > rows.length) ol.lastChild.remove();
+    rows.forEach((r, i) => {
+      let li = ol.children[i];
+      if (!li) {
+        li = document.createElement('li');
+        li.append(document.createElement('span'), document.createElement('b'));
+        ol.appendChild(li);
+      }
+      li.classList.toggle('me', r.me);
+      if (li.firstChild.textContent !== r.name) li.firstChild.textContent = r.name;
+      const sc = r.score.toLocaleString();
+      if (li.lastChild.textContent !== sc) li.lastChild.textContent = sc;
+    });
   }
 
   frame(now) {
@@ -918,6 +1123,7 @@ class Game {
     const steps = clamp(Math.round(dt / FIXED), 1, 12);
     const h = dt / steps;
     for (let i = 0; i < steps; i++) p.step(h);
+    this.syncWorldClock(dt);
     this.waves.update(dt);
     const time = p.time;
 
@@ -933,8 +1139,11 @@ class Game {
       const s = clamp((this.effects.impactFlag - 2) / 9, 0.1, 1);
       this.audio.splash(s);
       this.cam.shake = Math.max(this.cam.shake, s);
+      this.input.rumble(0.35 + 0.65 * s, 0.6 * s + 0.2, 120 + 260 * s);
     } else if (this.effects.smallImpact > 1.3 && T.speed > 4) {
-      this.audio.slap(clamp((this.effects.smallImpact - 1.1) / 2.5, 0, 1));
+      const ss = clamp((this.effects.smallImpact - 1.1) / 2.5, 0, 1);
+      this.audio.slap(ss);
+      this.input.rumble(0.1 + 0.3 * ss, 0.25 + 0.3 * ss, 70);
     }
     const shallow = this.terrain.heightAt(p.px, p.pz) > -3;
     const bound = shallow ? 1e9 : this.waves.maxHeight(p.px, p.pz, time) + 0.4;
@@ -975,7 +1184,7 @@ class Game {
         // beached and going nowhere
         if (T.ground > 0.3 && T.speed < 1 && T.pumpLoad < 0.3) {
           this.stuckT += dt;
-          if (this.stuckT > 1.2 && this.hintTimer <= 0) this.showHint(this.mobile ? 'Beached. Open MENU and RESUME, or steer clear next time.' : 'Beached. Press <kbd>R</kbd> to get back on the water.', 3);
+          if (this.stuckT > 1.2 && this.hintTimer <= 0) this.showHint(this.input.usingGamepad ? 'Beached. Press ' + pb('DOWN') + ' to get back on the water.' : this.mobile ? 'Beached. Open MENU and RESUME, or steer clear next time.' : 'Beached. Press <kbd>R</kbd> to get back on the water.', 3);
           if (this.stuckT > 5) this.respawn(true);
         } else this.stuckT = 0;
       }
@@ -996,8 +1205,14 @@ class Game {
       this.model.mScreen.color.setRGB(0.5 * v, 0.9 * v, 1.0 * v);
     }
 
+    // other riders, their name tags and the lobby board
+    this.mp.update(dt, this.camera.position);
+    this.mp.tags(this.camera);
     if (this.state === 'ride') this.updateHUD(dt);
     this.audio.update(T, p.ctrl, this.effects.sprayLevel, this.state !== 'ride', dt);
+    // controller rumble follows the engine; hits and landings jolt it
+    const rumbling = this.state === 'ride' && !this.wipe.on;
+    this.input.rumbleEngine(rumbling ? 0.12 + 0.55 * T.power * T.pumpLoad + (this.audio.limiter || 0) * 0.6 + (T.lcArmed ? 0.35 : 0) : 0, dt);
     if (!this.noRender) this.renderer.render(this.scene, this.camera);
     if (!this.fixedQuality) this.adaptQuality(dt);
     this.frames = (this.frames || 0) + 1;
@@ -1006,6 +1221,7 @@ class Game {
   // ----------------------------------------------------------- wave zone
   teleport(where) {
     const spot = where === 'zone' ? ZONE_IN : SPAWN;
+    this.phys.time = this.mp.worldTime() - 0.5;
     this.phys.reset(spot.x, spot.z, spot.yaw);
     this.phys.trim = 0;
     this.safe.x = spot.x;

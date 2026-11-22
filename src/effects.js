@@ -45,31 +45,35 @@ export class SkiEffects {
       const nv = T.nozzleVel;
       const nx = T.nozzle.x, nz = T.nozzle.z;
       const ny = Math.max(T.nozzle.y, T.waterAtNozzle + 0.02);
-      const spread = 0.03 + 0.1 * (1 - e) + 0.02 * flow + clamp(jd.y, 0, 0.5) * 0.05 * (1 - e * 0.6);
-      const rate = 4200 * Math.pow(flow, 0.75) * (0.06 + 0.94 * out) * dn * (1 + clamp(jd.y, 0, 0.5) * 1.2) * (1 + e * 0.6);
+      // how far the jet is aimed at the sky (trim up and bow up): the rooster
+      const trimK = clamp(jd.y * 3, 0, 1);
+      const spread = 0.045 + 0.1 * (1 - e) + 0.03 * flow + trimK * 0.06 * (1 - e * 0.5);
+      const rate = 5600 * Math.pow(flow, 0.75) * (0.06 + 0.94 * out) * dn * (1 + trimK * 0.9) * (1 + e * 0.6);
       this.acc.jet += rate * dt;
       let n = this.acc.jet | 0;
       this.acc.jet -= n;
-      if (n > 340) n = 340;
-      const boost = 1 + clamp(jd.y, 0, 0.5) * 0.7;
+      if (n > 460) n = 460;
+      const boost = 1 + trimK * 1.15;
       for (let i = 0; i < n; i++) {
         const sp = spread * (0.3 + rnd() * rnd() * 2.2);
         const dx = jd.x + rs() * sp, dy = jd.y * boost + rs() * sp * 0.8 + sp * 0.25, dz = jd.z + rs() * sp;
-        const sv = vjet * (0.78 + rnd() * 0.36);
+        // a wide spread of exit speeds fills the arch from the nozzle to the top
+        const sv = vjet * (0.62 + rnd() * 0.52);
         const vx = nv.x + dx * sv, vy = nv.y + dy * sv, vz = nv.z + dz * sv;
         const k = rnd() * dt; // sub-frame spread so the stream is continuous
-        const core = rnd() < 0.7;
+        const core = rnd() < 0.68;
+        const grow = 1 + trimK * 0.4;
         S.emit(
-          nx + vx * k + rs() * 0.04, ny + vy * k + rs() * 0.03, nz + vz * k + rs() * 0.04,
+          nx + vx * k + rs() * 0.06, ny + vy * k + rs() * 0.04, nz + vz * k + rs() * 0.06,
           vx, vy, vz,
-          1.3 + rnd() * 1.5,
-          core ? 0.07 + rnd() * 0.05 : 0.1 + rnd() * 0.08,
-          core ? 0.26 + rnd() * 0.3 : 0.45 + rnd() * 0.5,
-          1, core ? 0.16 : 0.45, core ? 1.0 : 0.7, 0.12
+          (1.5 + rnd() * 1.6) * (1 + trimK * 0.4),
+          core ? 0.09 + rnd() * 0.06 : 0.13 + rnd() * 0.1,
+          (core ? 0.38 + rnd() * 0.4 : 0.6 + rnd() * 0.7) * grow,
+          1, core ? 0.09 : 0.36, core ? 1.0 : 0.72, 0.12
         );
       }
       // hanging mist around the tail
-      this.acc.mist += rate * (0.07 + e * 0.1) * dt;
+      this.acc.mist += rate * (0.1 + e * 0.12) * dt;
       let m = this.acc.mist | 0;
       this.acc.mist -= m;
       for (let i = 0; i < m; i++) {
@@ -77,7 +81,7 @@ export class SkiEffects {
         S.emit(
           nx + rs() * 0.1, ny + rnd() * 0.1, nz + rs() * 0.1,
           nv.x * 0.4 + (jd.x + rs() * 0.25) * sv, nv.y * 0.3 + (jd.y * boost + rnd() * 0.25) * sv, nv.z * 0.4 + (jd.z + rs() * 0.25) * sv,
-          1.4 + rnd() * 1.2, 0.2, 0.8 + rnd() * 0.7, 0.3, 1.6, 0.13, 0.03
+          (1.6 + rnd() * 1.4) * (1 + trimK * 0.5), 0.25, (1.0 + rnd() * 0.9) * (1 + trimK * 0.5), 0.3, 1.4, 0.15, 0.03
         );
       }
       // hitting the gas with the nozzle clear of the water: the pump coughs
