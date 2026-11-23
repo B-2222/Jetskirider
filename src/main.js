@@ -1089,7 +1089,14 @@ class Game {
       b.setAttribute('aria-pressed', inIt ? 'true' : 'false');
       b.disabled = mp.status !== 'ready' || mp.joining || (!inIt && n >= MAX_PER_LOBBY);
     });
-    if (mp.status === 'offline') st.textContent = 'Online riding works on the shared claude.ai link, signed in.';
+    if (mp.status === 'offline') {
+      st.textContent =
+        mp.offlineWhy === 'failed'
+          ? 'Could not reach the online server. Check your connection and reload.'
+          : window.claude
+            ? 'Online riding works on the shared claude.ai link, signed in.'
+            : 'Online riding is not set up on this site yet (it needs Firebase: see the README).';
+    }
     else if (mp.status === 'connecting') st.textContent = 'Connecting…';
     else if (mp.joining) st.textContent = 'Joining…';
     else if (mp.lobbyId) st.textContent = 'You are in ' + LOBBIES.find((l) => l.id === mp.lobbyId).name + '. Everyone here rides the same waves.';

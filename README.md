@@ -64,7 +64,22 @@ The Freestyle and Race stand-ups ride differently: no trim, a light hull that yo
 
 ## Online
 
-Two lobbies, up to 8 riders each, from the ONLINE section of the garage. Everyone needs the shared link to this page and must be signed in. Riders, skis, names, spray and tricks show for everyone, with a live leaderboard and trick feed. The wave sets are synced, so you all ride the same surf.
+Two lobbies, up to 8 riders each, from the ONLINE section of the garage. Riders, skis, names, spray and tricks show for everyone, with a live leaderboard and trick feed. The wave sets are synced, so you all ride the same surf.
+
+- Inside claude.ai it uses the page's built-in room (everyone needs the shared link and must be signed in).
+- On any other host (Vercel, Netlify, GitHub Pages...) it uses a free Firebase Realtime Database. Set it up once as below; without it the game stays solo there.
+
+### Put it online (Vercel + Firebase)
+
+1. **Firebase** (free Spark plan, no card needed): at [console.firebase.google.com](https://console.firebase.google.com) add a project (Analytics off). Open **Build > Realtime Database > Create database**, pick the nearest location (Singapore for Australia), start in **locked mode**.
+2. In the database's **Rules** tab, replace everything with the contents of [`database.rules.json`](database.rules.json) and press **Publish**. Riders can then only write their own small node in the three rooms the game uses, and nothing else.
+3. **Project settings** (gear icon) > **Your apps** > the web icon `</>` > register an app (no hosting). Copy the `firebaseConfig` object into [`src/firebase-config.js`](src/firebase-config.js) as `FIREBASE_CONFIG`. Make sure it has a `databaseURL` (if not, copy the URL shown at the top of the Realtime Database page). These values are not secret.
+4. **Vercel**: at [vercel.com](https://vercel.com) sign in with GitHub, **Add New > Project**, import this repository. Framework preset **Other**, no build command, output directory left as it is. **Deploy**. Every push to the branch redeploys.
+5. Send friends the Vercel link; everyone picks the same lobby in the garage.
+
+The free plan allows 100 riders online at once and 10 GB of downloads a month: roughly 40 hours a month of four friends riding together. If the monthly allowance ever runs out, online riding pauses until the next month; the free plan never charges.
+
+To test locally without Firebase, open the game with `?mpfake=1` in two tabs of one browser. To test the Firebase path, run the emulator (`firebase emulators:start --only database --project demo-jetski` with `database.rules.json`) and open `?fbemu=9000`.
 
 ## Wave zone
 
@@ -83,6 +98,6 @@ Spark Trixx, Spark 2up, GTI SE 170, GTR 230, RXP-X 325, RXT-X 325, a 600 hp tune
 - `src/jetski.js`, `src/rider.js`: lofted Sea-Doo hulls and an IK-posed rider.
 - `src/audio.js`: engine loops synthesised at start-up from three-cylinder (or two-stroke twin) firing pulses through fixed exhaust resonances, crossfaded by rpm and load. Wet-exhaust gurgle, intake roar, jet pump, supercharger whine, turbo spool and flutter, and a rev limiter when the pump runs dry.
 
-- `src/multiplayer.js`: online lobbies over the claude.ai room capability; `src/fakeroom.js` stands in for it locally (open the game with `?mpfake=1` in two tabs).
+- `src/multiplayer.js`: online lobbies over the claude.ai room capability, or `src/fireroom.js` (the same interface on a Firebase Realtime Database, SDK bundled in `vendor/firebase-db.js`) on other hosts; `src/fakeroom.js` stands in locally (`?mpfake=1` in two tabs).
 
-`tools/` holds headless test helpers: `node tools/physics-test.mjs trixx`, `node tools/wave-test.mjs trixx`, `node tools/spin-test.mjs trixx airsteer`, `node tools/standup-test.mjs sfree` (stand-up flips, rolls, spins and the flat-water pop), `node tools/superman-test.mjs trixx` (sit-down Supermans), `node tools/launch-test.mjs rxp`, `node tools/mp-test.mjs <dir>` (two players), `node tools/pad-test.mjs <dir>` (simulated Xbox controller) and `node tools/audio-render.mjs <dir> rxp600` (renders a scripted ride to WAV).
+`tools/` holds headless test helpers: `node tools/physics-test.mjs trixx`, `node tools/wave-test.mjs trixx`, `node tools/spin-test.mjs trixx airsteer`, `node tools/standup-test.mjs sfree` (stand-up flips, rolls, spins and the flat-water pop), `node tools/superman-test.mjs trixx` (sit-down Supermans), `node tools/launch-test.mjs rxp`, `node tools/mp-test.mjs <dir> [fake|fbemu]` (two players, over the stand-in room or the Firebase emulator), `node tools/pad-test.mjs <dir>` (simulated Xbox controller) and `node tools/audio-render.mjs <dir> rxp600` (renders a scripted ride to WAV).

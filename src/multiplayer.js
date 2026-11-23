@@ -1,11 +1,12 @@
-// Online riding over the claude.ai `room` capability: two lobbies, each a
-// named room. Every rider shares their ski's state as presence (about 15
-// times a second, compactly), and everyone else draws them smoothly a
-// moment in the past so jitter never shows. Nothing is stored: when you
-// leave, you are gone.
+// Online riding: two lobbies, each a named room. Every rider shares their
+// ski's state as presence (12-15 times a second, compactly), and everyone
+// else draws them smoothly a moment in the past so jitter never shows.
+// Nothing is kept: when you leave, you are gone.
 //
-// Works only where the page runs inside the claude.ai viewer for a
-// signed-in person who can open it; everywhere else the game stays solo.
+// Inside the claude.ai viewer this rides on its `room` capability (signed-in
+// people who can open the page). Anywhere else (e.g. on Vercel) it uses a
+// Firebase Realtime Database when src/firebase-config.js has a config;
+// without one the game stays solo.
 
 import * as THREE from 'three';
 import { JetskiModel } from './jetski.js';
@@ -13,6 +14,7 @@ import { Rider } from './rider.js';
 import { skiById } from './specs.js';
 import { clamp, smoothstep } from './util.js';
 import { makeFakeRoom } from './fakeroom.js';
+import { FIREBASE_CONFIG } from './firebase-config.js';
 
 export const LOBBIES = [
   { id: 'lobby-1', name: 'Lobby 1' },
@@ -92,7 +94,19 @@ class Remote {
     this.setLook(typeof s.k === 'string' ? s.k : 'trixx', s.c);
     this.name = cleanName(s.n) || this.mp.profileName(p.by) || 'Rider';
     this.score = Number.isFinite(s.sc) ? Math.max(0, Math.min(1e8, s.sc | 0)) : 0;
-    const t = p.updatedAt / 1000;
+    // Samples go on the local clock that sample() is called with
+    // (performance.now). Spaced by the sender's own timestamps, so network
+    // bunching does not show, with the sender-to-local offset tracked (it
+    // snaps down to the fastest delivery seen, creeps up slowly, and resets
+    // if the sender's clock jumps).
+    const recv = performance.now() / 1000;
+    let t = recv;
+    if (Number.isFinite(s.t)) {
+      const off = recv - s.t / 1000;
+      if (this.off === undefined || off < this.off || Math.abs(off - this.off) > 1) this.off = off;
+      else this.off += (off - this.off) * 0.02;
+      t = s.t / 1000 + this.off;
+    }
     const last = this.samples[this.samples.length - 1];
     if (last && t <= last.t) return;
     this.samples.push({ t, s });
@@ -268,6 +282,8 @@ export class Multiplayer {
     this.remotes = new Map();
     this.clockOffset = 0; // ms added to Date.now() for the shared wave clock
     this.sendT = 0;
+    this.sendHz = SEND_HZ;
+    this.offlineWhy = 'none'; // none: no way online here · failed: could not connect
     this.trickI = 0;
     this.lastTrick = null;
     this.names = new Map();
@@ -285,18 +301,36 @@ export class Multiplayer {
   }
 
   async init() {
-    const fake = new URLSearchParams(location.search).get('mpfake');
+    const q = new URLSearchParams(location.search);
+    // ?fbemu=9000: the local Firebase emulator (testing only)
+    const emu = q.get('fbemu');
     try {
-      if (fake) this.room = makeFakeRoom();
-      else if (window.claude && typeof window.claude.use === 'function') {
+      if (q.get('mpfake')) this.room = makeFakeRoom();
+      else if (emu) {
+        const { makeFireRoom } = await import('./fireroom.js');
+        const port = parseInt(emu, 10) || 9000;
+        this.room = await makeFireRoom({ projectId: 'demo-jetski', apiKey: 'demo', databaseURL: 'http://127.0.0.1:' + port + '?ns=demo-jetski-default-rtdb' }, { emulator: { host: '127.0.0.1', port } });
+      } else if (window.claude && typeof window.claude.use === 'function') {
         this.room = await window.claude.use('room');
         this.user = await window.claude.use('user').catch(() => null);
       }
     } catch {
       this.room = null;
     }
+    if (!this.room && FIREBASE_CONFIG && !emu) {
+      try {
+        const { makeFireRoom } = await import('./fireroom.js');
+        this.room = await makeFireRoom(FIREBASE_CONFIG);
+      } catch (e) {
+        console.warn('jetski online: Firebase did not start', e);
+        this.room = null;
+      }
+    }
+    this.transport = this.room ? this.room.transport || 'claude' : null;
+    this.sendHz = (this.room && this.room.sendHz) || SEND_HZ;
     if (!this.room) {
       this.status = 'offline';
+      this.offlineWhy = FIREBASE_CONFIG || emu ? 'failed' : 'none';
       this.changed();
       return;
     }
@@ -313,6 +347,7 @@ export class Multiplayer {
       () => this.changed(),
       () => {
         this.status = 'offline';
+        this.offlineWhy = 'failed';
         this.changed();
       }
     );
@@ -472,7 +507,7 @@ export class Multiplayer {
     const idle = g.state !== 'ride';
     this.sendT -= dt;
     if (this.sendT > 0) return;
-    this.sendT = idle ? 0.5 : 1 / SEND_HZ;
+    this.sendT = idle ? 0.5 : 1 / this.sendHz;
     const p = g.phys;
     const T = p.tele;
     const st = {

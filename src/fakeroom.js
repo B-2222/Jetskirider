@@ -25,7 +25,7 @@ function room(channelName, me) {
     if (m.peer === me) return;
     if (m.type === 'hello') {
       upsert(m.peer, m.presence);
-      ch.postMessage({ type: 'state', peer: me, presence: mine });
+      post({ type: 'state', peer: me, presence: mine });
     } else if (m.type === 'state' || m.type === 'presence') upsert(m.peer, m.presence);
     else if (m.type === 'bye' && peers.has(m.peer)) {
       const p = peers.get(m.peer);
@@ -34,7 +34,11 @@ function room(channelName, me) {
     }
   };
   ch.postMessage({ type: 'hello', peer: me, presence: mine });
-  addEventListener('pagehide', () => ch.postMessage({ type: 'bye', peer: me }));
+  let open = true;
+  const post = (m) => {
+    if (open) ch.postMessage(m);
+  };
+  addEventListener('pagehide', () => post({ type: 'bye', peer: me }));
   return {
     name: channelName,
     presence(patch) {
@@ -43,7 +47,7 @@ function room(channelName, me) {
         else mine[k] = v;
       }
       peers.set(me, self());
-      ch.postMessage({ type: 'presence', peer: me, presence: mine });
+      post({ type: 'presence', peer: me, presence: mine });
       emitChange([], [], [peers.get(me)]);
       return Promise.resolve();
     },
@@ -59,7 +63,8 @@ function room(channelName, me) {
       return () => {};
     },
     leave() {
-      ch.postMessage({ type: 'bye', peer: me });
+      post({ type: 'bye', peer: me });
+      open = false;
       ch.close();
       listeners.clear();
       return Promise.resolve();

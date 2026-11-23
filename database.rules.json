@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "jetski": {
+      "$room": {
+        ".read": "$room === 'lobby' || $room === 'lobby-1' || $room === 'lobby-2'",
+        "$peer": {
+          ".write": "($room === 'lobby' || $room === 'lobby-1' || $room === 'lobby-2') && $peer.matches(/^[a-z0-9]{12}$/)",
+          ".validate": "newData.hasChildren(['s', 't'])",
+          "s": { ".validate": "newData.isString() && newData.val().length <= 1200" },
+          "t": { ".validate": "newData.val() === now" },
+          "$other": { ".validate": false }
+        }
+      }
+    }
+  }
+}
