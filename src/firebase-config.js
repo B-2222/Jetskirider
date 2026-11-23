@@ -6,4 +6,12 @@
 //
 // Leave it as null and the game simply stays solo outside claude.ai.
 
-export const FIREBASE_CONFIG = null;
+export const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyA5X3MsLiVamXh_D12uxUfbvLjmBJ2A8KE',
+  authDomain: 'jetskirider-8883e.firebaseapp.com',
+  databaseURL: 'https://jetskirider-8883e-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId: 'jetskirider-8883e',
+  storageBucket: 'jetskirider-8883e.firebasestorage.app',
+  messagingSenderId: '361487490891',
+  appId: '1:361487490891:web:49e2aded9e84cec1c252ce',
+};

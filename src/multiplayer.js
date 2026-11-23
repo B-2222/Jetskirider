@@ -317,7 +317,9 @@ export class Multiplayer {
     } catch {
       this.room = null;
     }
-    if (!this.room && FIREBASE_CONFIG && !emu) {
+    // Firebase only outside claude.ai (inside it, the page's own room is the way)
+    const useFire = !!FIREBASE_CONFIG && !window.claude;
+    if (!this.room && useFire && !emu) {
       try {
         const { makeFireRoom } = await import('./fireroom.js');
         this.room = await makeFireRoom(FIREBASE_CONFIG);
@@ -330,7 +332,7 @@ export class Multiplayer {
     this.sendHz = (this.room && this.room.sendHz) || SEND_HZ;
     if (!this.room) {
       this.status = 'offline';
-      this.offlineWhy = FIREBASE_CONFIG || emu ? 'failed' : 'none';
+      this.offlineWhy = useFire || emu ? 'failed' : 'none';
       this.changed();
       return;
     }
@@ -352,7 +354,25 @@ export class Multiplayer {
       }
     );
     this.room.presence({ lobby: null, n: this.nick }).catch(() => {});
-    this.status = 'ready';
+    if (this.transport === 'firebase') {
+      // ready once Firebase has actually connected; say so if it cannot
+      // (e.g. a network that blocks it), and recover if it connects later
+      this.status = 'connecting';
+      const giveUp = setTimeout(() => {
+        if (this.status === 'connecting') {
+          this.status = 'offline';
+          this.offlineWhy = 'failed';
+          this.changed();
+        }
+      }, 12000);
+      this.room.onConnection((on) => {
+        if (on && this.status !== 'ready') {
+          clearTimeout(giveUp);
+          this.status = 'ready';
+          this.changed();
+        }
+      });
+    } else this.status = 'ready';
     this.changed();
   }
 
