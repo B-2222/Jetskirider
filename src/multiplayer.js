@@ -188,6 +188,7 @@ class Remote {
       impact: 0,
       leanIn: s.li || 0,
       uy: ux.y,
+      tuck: clamp(s.tu || 0, 0, 1),
     };
     this.model.update(tele, dt);
     // full rider IK up close, every few frames further out
@@ -543,6 +544,7 @@ export class Multiplayer {
       ln: r2(p.ctrl.lean),
       li: r2(p.leanIn || 0),
       sm: r2(T.superman || 0),
+      tu: r2(T.tuck || 0),
       a: T.airborne ? 1 : 0,
       w: g.wipe.on ? 1 : 0,
       f: T.reverse > 0.05 ? 1 : 0,

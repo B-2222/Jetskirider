@@ -102,6 +102,12 @@ export class Breakers {
     this.mesh.renderOrder = 5;
     this.roar = 0;
     this.sprayAcc = 0;
+    this.featherAcc = 0;
+    // the lip meeting the rider: how hard (0..1+), which way it shoves, and
+    // whether it is landing on them rather than being punched through
+    this.lipHit = 0;
+    this.lipLand = false;
+    this.lipDir = { x: 1, z: 0 };
     this._s = {};
   }
 
@@ -117,6 +123,9 @@ export class Breakers {
     const X = this.aux;
     let strip = 0;
     let roar = 0;
+    let hit = 0;
+    let land = false;
+    const cam = this.camPos;
     const near = (x, z) => Math.hypot(x - ski.px, z - ski.pz);
     const waves = [];
     for (let i = 0; i < S.count; i++) waves.push({ ...S.waves[i] });
@@ -131,6 +140,11 @@ export class Breakers {
         const envAt = (l) => 1 - smooth(w.half, w.half + 50, Math.abs(l - w.lc));
         if (envAt(lf) < 0.02 && envAt(lf - side * ddMax) < 0.02) continue;
         const base = strip * VPS;
+        // where the rider is relative to this curl (along the travel axis and
+        // along the crest), to test them against the lip below
+        const rs = (ski.px - S.cx) * S.dx + (ski.pz - S.cz) * S.dz - w.sc;
+        const rl = (ski.px - S.cx) * S.nx + (ski.pz - S.cz) * S.nz;
+        const jSki = Math.abs(rs) < 14 ? Math.round(((side * (lf - rl)) / ddMax) * NS) : -1;
         for (let j = 0; j <= NS; j++) {
           const dd = (j / NS) * ddMax;
           const l = lf - side * dd;
@@ -170,14 +184,46 @@ export class Breakers {
             P[v * 3 + 1] = y;
             P[v * 3 + 2] = cz + S.dz * s;
             X[v * 2] = Math.max(collapse, smooth(0.6, 1, u) * (0.3 + 0.4 * r));
-            X[v * 2 + 1] = alpha;
+            // the root of the sheet, behind the crest, belongs inside the back
+            // of the wave: fade it so it never shows as a fin on the back slope
+            X[v * 2 + 1] = alpha * smooth(0.04, 0.3, u);
+            // the rider touching the thrown part of the lip (not the open tube
+            // inside it): the sheet is about a metre thick where it hits
+            if (j === jSki && u > 0.3 && alpha > 0.3 && H > 0.7) {
+              const d = Math.hypot(s - rs, y - (ski.py + 0.45));
+              if (d < 1.1) {
+                const k = (1 - d / 1.1) * Math.min(1.6, H / SURF.A0) * alpha;
+                if (k > hit) {
+                  hit = k;
+                  land = u > 0.7 && q > 0.6; // the falling end of the lip, coming down on them
+                }
+              }
+            }
+          }
+          // spray feathering off the lip as it throws (near the camera only)
+          if (cam && q < 1.35 && r > 0.25 && H > 0.9 && (j & 1) === 0) {
+            const tx = cx + S.dx * p2s;
+            const tz = cz + S.dz * p2s;
+            const dc = Math.hypot(tx - cam.x, tz - cam.z);
+            if (dc < 70) {
+              this.featherAcc += 3.2 * H * dt * density * (1 - dc / 70);
+              while (this.featherAcc >= 1) {
+                this.featherAcc -= 1;
+                const rs2 = () => Math.random() * 2 - 1;
+                const fw = SURF.c * (0.5 + Math.random() * 0.4);
+                this.spray.emit(tx + rs2() * 0.6 * S.nx, p2y + 0.1, tz + rs2() * 0.6 * S.nz,
+                  S.dx * fw + rs2() * 0.8, 0.8 + Math.random() * 1.8, S.dz * fw + rs2() * 0.8,
+                  0.7 + Math.random() * 0.7, 0.06 + Math.random() * 0.05, 0.35 + Math.random() * 0.45,
+                  0.9, 0.6, 0.55, 0.25);
+              }
+            }
           }
           // the lip lands: explode into spray (only near the rider)
           if (q > 1.35 && q < 1.9 && H > 0.6) {
             const ex = cx + S.dx * reach;
             const ez = cz + S.dz * reach;
             const dist = near(ex, ez);
-            roar = Math.max(roar, (H / SURF.A0) * (1 - smooth(25, 170, dist)));
+            roar = Math.max(roar, Math.min(1, H / SURF.A0) * (1 - smooth(25, 170, dist)));
             if (dist < 170) {
               this.sprayAcc += 26 * H * dt * density * (1 - smooth(60, 170, dist));
               while (this.sprayAcc >= 1) {
@@ -209,11 +255,15 @@ export class Breakers {
         const x = S.cx + S.dx * (w.sc + 2) + S.nx * l;
         const z = S.cz + S.dz * (w.sc + 2) + S.nz * l;
         const dist = near(x, z);
-        roar = Math.max(roar, k * 0.6 * (1 - smooth(20, 140, dist)));
+        roar = Math.max(roar, Math.min(1, k) * 0.6 * (1 - smooth(20, 140, dist)));
         if (dist < 140) this.foam.stamp(x + (Math.random() - 0.5) * 3, z + (Math.random() - 0.5) * 3, 1.5 + k, k * dt * 3.5, k * dt * 4);
       }
     }
     this.roar = roar;
+    this.lipHit = hit;
+    this.lipLand = land;
+    this.lipDir.x = S.dx;
+    this.lipDir.z = S.dz;
     // tidy up the strips we did not use this frame
     const used = strip * NS * NP * 6;
     this.geo.setDrawRange(0, used);

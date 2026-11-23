@@ -200,17 +200,12 @@ export class Tricks {
         const parts = [];
         let pts = a.time * 180 + Math.min(a.maxH, 10) * 40;
         if (phys.spec.standup) {
-          // stand-ups flip and roll; a rotation counts once it is ~80% done
-          // (the rider finishes it on the way down)
+          // stand-ups flip; a rotation counts once it is ~80% done (the rider
+          // finishes it on the way down)
           const flips = Math.floor(Math.abs(a.pitch) / (Math.PI * 2) + 0.2);
-          const rolls = Math.floor(Math.abs(a.roll) / (Math.PI * 2) + 0.2);
           if (flips > 0) {
             parts.push((flips > 1 ? 'DOUBLE ' : '') + (a.pitch > 0 ? 'BACKFLIP' : 'FRONTFLIP'));
             pts += 1500 * flips;
-          }
-          if (rolls > 0) {
-            parts.push((rolls > 1 ? 'DOUBLE ' : '') + 'BARREL ROLL');
-            pts += 1300 * rolls;
           }
           if (spins > 0) {
             parts.push(spins * 180 + (parts.length ? '' : ' SPIN'));

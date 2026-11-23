@@ -22,7 +22,7 @@ Then go to `http://localhost:8000`.
 | `E` / `Q` | VTS trim up / down. Trim up for big rooster tails |
 | `Space` | Pull back: wheelies and tail stands (backflip on stand-ups) |
 | `Shift` | Slide: hold while turning to break the hull loose. Without it the ski carves |
-| `X` | Trick button: Superman in the air on sit-downs, barrel roll (with steering) on stand-ups |
+| `X` | Superman in the air (sit-down skis) |
 | `C` | Camera |
 | `F` | First person camera |
 | `B` | Look behind you (toggle) |
@@ -30,6 +30,7 @@ Then go to `http://localhost:8000`.
 | `N` | Rolling anti-lag on/off (600 turbo) |
 | `R` | Reset to open water |
 | `G` | Go to the wave zone (and back) |
+| `I` | Show / hide the FPS counter |
 | `T` / `V` | Change light / water |
 | `M` / `Esc` | Sound / garage |
 
@@ -46,7 +47,7 @@ Touch controls work too.
 | `A` (hold) | Slide |
 | `B` (hold) | Pull back (backflip on stand-ups) |
 | `RB` / `LB` | Trim up / down |
-| `X` | Hold to look behind (in the air: Superman on sit-downs, trick button on stand-ups) |
+| `X` | Hold to look behind (in the air on a sit-down: Superman) |
 | `Y` | Camera |
 | Right stick | Look around |
 | D-pad | Up: wave zone, Down: reset, Right: first person, Left: look-behind toggle |
@@ -58,7 +59,7 @@ In the garage the D-pad or left stick moves between buttons, `A` picks, `B` goes
 
 The Freestyle and Race stand-ups ride differently: no trim, a light hull that you lean right over into turns (`Shift` still slides it), no reverse, and a two-stroke engine. They flip.
 
-- Off a jump: `Space` backflip, `X` + steer barrel roll, steer to spin. Let go once the rotation is under way and the rider lands it.
+- Off a jump: `Space` backflip, steer to spin. Let go once the flip is under way and the rider lands it.
 - Flips need a decent wave jump; on a smaller one the rider tucks tighter to get round in time. If the jump really is too small (or you press too late) the game tells you. Hold `Space` up the face and through the lip for the biggest flips. The Freestyle rotates faster and can double off the biggest sets.
 - Flat-water backflip: at low speed hold `Shift` without steering to sink the nose, then hit `Space`. The nose pops out of the water; keep holding `Space` to flip.
 
@@ -85,6 +86,8 @@ To test locally without Firebase, open the game with `?mpfake=1` in two tabs of 
 
 Breaking surf rolls through a marked patch of open water east of the lagoon: waves arrive in sets with calm gaps between, peak, then peel and barrel (follow the WAVE ZONE marker, press `G`, or pick it under START in the garage). Hit the faces flat out to launch, throw flat spins off the lip, ride the barrel under the curl, and land straight for the clean-landing bonus.
 
+Sets vary: in every six (about six and a half minutes) two are bigger and one is huge, with faces up to about 5 m, and the game calls it out when one is on the horizon. Everyone online rides the same sets. Watch the lip: punch through it at speed and you ride on, but sit under a big one as it comes down and you get smashed.
+
 ## The garage
 
 Spark Trixx, Spark 2up, GTI SE 170, GTR 230, RXP-X 325, RXT-X 325, a 600 hp tuned RXP-X and two stand-ups (Freestyle and Race), each with its own weight, thrust, grip, trim range and colourways.
@@ -94,8 +97,9 @@ Spark Trixx, Spark 2up, GTI SE 170, GTR 230, RXP-X 325, RXT-X 325, a 600 hp tune
 - `src/physics.js`: 6-DOF rigid body. The hull is sampled at 11 points for buoyancy, planing lift, drag and a tyre-like lateral grip that saturates and lets go (powerslides). Thrust acts at the steering nozzle along its steer and trim angles, and only while the intake grate is in the water.
 - `src/waves.js`: Gerstner waves shared by the GPU ocean and the CPU physics, so the hull rides the waves you see.
 - `src/water.js`: ocean shader plus a scrolling foam map. Hull wash and every spray droplet that lands stamp white water into it, which then ages into lace.
-- `src/particles.js`, `src/effects.js`: jet stream, rooster tail, bow and slide spray, landing splashes.
-- `src/jetski.js`, `src/rider.js`: lofted Sea-Doo hulls and an IK-posed rider.
+- `src/particles.js`, `src/effects.js`: jet stream, rooster tail, bow and slide spray, landing splashes. Every droplet that comes down, even one that has faded out in the air, leaves foam where it lands.
+- Post effects (desktop): a light bloom on sun glints and backlit spray, a grade and a vignette, from three.js's own add-ons in `vendor/addons`. They switch off if the frame rate drops; `?bloom=0` turns them off.
+- `src/jetski.js`, `src/rider.js`: lofted Sea-Doo hulls and an IK-posed rider (cap, shades, black and red life jacket, boardshorts).
 - `src/audio.js`: engine loops synthesised at start-up from three-cylinder (or two-stroke twin) firing pulses through fixed exhaust resonances, crossfaded by rpm and load. Wet-exhaust gurgle, intake roar, jet pump, supercharger whine, turbo spool and flutter, and a rev limiter when the pump runs dry.
 
 - `src/multiplayer.js`: online lobbies over the claude.ai room capability, or `src/fireroom.js` (the same interface on a Firebase Realtime Database, SDK bundled in `vendor/firebase-db.js`) on other hosts; `src/fakeroom.js` stands in locally (`?mpfake=1` in two tabs).

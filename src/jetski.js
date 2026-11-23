@@ -875,6 +875,7 @@ export class JetskiModel {
     steerRoot.position.set(-poleLen, 0.05, 0);
     steerRoot.rotation.z = 0.5; // undo the pole's angle
     pole.add(steerRoot);
+    this.steerRoot = steerRoot;
     const steer = new THREE.Group();
     steerRoot.add(steer);
     this.steer = steer;
@@ -1001,5 +1002,11 @@ export class JetskiModel {
     this.nozzlePitch.rotation.z = -tele.trimAngle; // nozzle outlet tilts up with trim
     const target = tele.reverse > 0.05 ? 1.25 : 0;
     this.gate.rotation.z = lerp(this.gate.rotation.z, -target, clamp(dt * 12, 0, 1));
+    if (this.pole) {
+      // mid-flip the rider hauls the pole up to their chest
+      this.tk = lerp(this.tk || 0, tele.tuck || 0, clamp(dt * 14, 0, 1));
+      this.pole.rotation.z = -0.5 - this.tk * 0.32;
+      this.steerRoot.rotation.z = -this.pole.rotation.z;
+    }
   }
 }

@@ -1,4 +1,4 @@
-// Stand-up tricks: flat-water pop + backflip, and wave tricks (X alone must do nothing).
+// Stand-up tricks: flat-water pop + backflip, and wave tricks (X alone does nothing, X + steer is just a spin).
 //   node tools/standup-test.mjs [skiId] [key=value ...]   (spec overrides, e.g. flipRate=6.2)
 import { SkiPhysics } from '../src/physics.js';
 import { skiById } from '../src/specs.js';
@@ -29,7 +29,7 @@ function track(p, rot) { const T = p.tele; rot.p += (p.wx * T.rx + p.wy * T.ry +
 // 2. wave tricks
 const waves = new Waves(); waves.setSeaState(0.5, true);
 const world = { sample(x, z, t, o) { waves.sample(x, z, t, o); o.water = o.h; o.ground = -30; o.mu = 0.5; return o; }, groundNormal(x, z, n) { n.x = 0; n.y = 1; n.z = 0; } };
-for (const trick of ['back', 'lipback', 'roll', 'spin', 'xonly']) {
+for (const trick of ['back', 'lipback', 'spin', 'xonly', 'xsteer']) {
   const p = new SkiPhysics(spec, world);
   const hx = -Math.cos(WAVE_ZONE.dir), hz = -Math.sin(WAVE_ZONE.dir);
   p.time = 30; p.reset(WAVE_ZONE.x - hx * 300, WAVE_ZONE.z - hz * 300, Math.atan2(-hz, hx));
@@ -41,11 +41,11 @@ for (const trick of ['back', 'lipback', 'roll', 'spin', 'xonly']) {
     if (trick === 'lipback' && !T.airborne && p.vy > 2.5) p.ctrl.lean = -1;
     if (trick === 'lipback' && T.airborne && Math.abs(rot.p) < 5.0 && (air < 0.02 || p.ctrl.lean < 0 || p.airHeld?.lean < 0)) p.ctrl.lean = -1;
     if (T.airborne && air > 0.13) {
-      const need = trick === 'back' || trick === 'lipback' ? Math.abs(rot.p) < 5.0 : trick === 'roll' ? Math.abs(rot.r) < 5.2 : trick === 'spin' ? Math.abs(rot.y) < 5.4 : true;
+      const need = trick === 'back' || trick === 'lipback' ? Math.abs(rot.p) < 5.0 : trick === 'xsteer' ? true : trick === 'spin' ? Math.abs(rot.y) < 5.4 : true;
       if (need) {
         if (trick === 'back' || trick === 'lipback') p.ctrl.lean = -1;
         if (trick === 'xonly') p.ctrl.trick = 1;
-        if (trick === 'roll') { p.ctrl.trick = 1; p.ctrl.steer = 1; }
+        if (trick === 'xsteer') { p.ctrl.trick = 1; p.ctrl.steer = 1; } // was the barrel roll: now just a spin
         if (trick === 'spin') p.ctrl.steer = 1;
       }
     }

@@ -270,7 +270,6 @@ export const SKIS = [
     wheelieMax: 48 * DEG,
     flipRate: 7.2, // rad/s: a backflip in about a second, a double off the biggest sets
     spinRate: 6.2,
-    rollRate: 8.0,
     idleRpm: 1500,
     maxRpm: 7600,
     cyl: 2,
@@ -312,7 +311,6 @@ export const SKIS = [
     wheelieMax: 42 * DEG,
     flipRate: 6.6,
     spinRate: 5.2,
-    rollRate: 7.6,
     popK: 1.1, // the longer hull stores more buoyancy for a flat-water pop
     idleRpm: 1600,
     maxRpm: 8200,

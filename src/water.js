@@ -109,10 +109,27 @@ export class FoamField {
           gl_PointSize = max(position.z / uSize * uRes * 2.0, 1.5);
         }`,
       fragmentShader: /* glsl */ `
+        uniform vec2 uCenter;
+        uniform float uSize, uRes;
         varying vec2 vDat;
+        float h21(vec2 p) {
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+        float vn(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+        }
         void main() {
           float d = length(gl_PointCoord - 0.5) * 2.0;
-          float a = smoothstep(1.0, 0.15, d);
+          // foam is lace, not a disc: break every stamp up with noise fixed to
+          // the water, so splashes leave ragged, holey patches
+          vec2 wp = uCenter + (gl_FragCoord.xy / uRes - 0.5) * uSize;
+          float n = vn(wp * 1.4) * 0.6 + vn(wp * 4.1 + 17.0) * 0.4;
+          float a = smoothstep(1.0, 0.15, d) * smoothstep(0.22, 0.62, n + (1.0 - d) * 0.42) * 1.3;
           gl_FragColor = vec4(vDat.x * a, vDat.y * a, 0.0, 0.0);
         }`,
     });

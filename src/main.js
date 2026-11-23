@@ -19,6 +19,34 @@ import { Input, PAD } from './input.js';
 import { Multiplayer, LOBBIES, MAX_PER_LOBBY } from './multiplayer.js';
 import { Audio } from './audio.js';
 import { Tricks } from './tricks.js';
+import { EffectComposer } from '../vendor/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from '../vendor/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from '../vendor/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from '../vendor/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from '../vendor/addons/postprocessing/OutputPass.js';
+
+// Final grade before tone mapping: a touch more colour and a soft vignette.
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, uVig: { value: 0.24 }, uSat: { value: 1.07 } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float uVig, uSat;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+      c.rgb = max(mix(vec3(l), c.rgb, uSat), 0.0);
+      vec2 d = vUv - 0.5;
+      c.rgb *= 1.0 - uVig * smoothstep(0.2, 0.9, dot(d, d) * 2.0);
+      gl_FragColor = c;
+    }`,
+};
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -71,6 +99,10 @@ class Game {
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.15, 12000);
+    // bloom on the brightest highlights (sun glints, backlit spray), a light
+    // grade and a vignette. Desktop only; it switches itself off if the frame
+    // rate struggles (?bloom=0 turns it off).
+    this.setupPost(!coarse && params.get('bloom') !== '0');
 
     // --- world -------------------------------------------------------------
     this.waves = new Waves();
@@ -122,9 +154,12 @@ class Game {
     this.scene.add(buildZoneArch(ZONE_IN.x + ZONE_IN.hx * 30, ZONE_IN.z + ZONE_IN.hz * 30, ZONE_IN.yaw));
 
     this.spray = new Spray({ max: coarse ? 11000 : 30000, noiseTex: this.noiseTex });
+    this.spray.uniforms.uSunDir = this.sky.uniforms.uSunDir;
+    this.spray.uniforms.uSunColor = this.sky.uniforms.uSunColor;
     this.scene.add(this.spray.mesh);
     this.breakers = new Breakers({ waves: this.waves, ocean: this.ocean, sky: this.sky, spray: this.spray, foam: this.foam });
     this.scene.add(this.breakers.mesh);
+    this.breakers.camPos = this.camera.position;
 
     // --- player ------------------------------------------------------------
     this.skiIndex = clamp(parseInt(store.get('ski', '0'), 10) || 0, 0, SKIS.length - 1);
@@ -159,6 +194,14 @@ class Game {
     this.seaIndex = clamp(parseInt(params.get('sea') || store.get('sea', '1'), 10) || 0, 0, SEA_STATES.length - 1);
     this.timeIndex = clamp(parseInt(params.get('tod') || store.get('tod', '0'), 10) || 0, 0, TIMES.length - 1);
     this.camMode = 0;
+    let fpsOn = true;
+    try {
+      fpsOn = localStorage.getItem('jetski-rider-fps') !== '0';
+    } catch {
+      /* storage unavailable */
+    }
+    this.showFps = fpsOn;
+    $('fps').hidden = !fpsOn;
     this.cam = { yaw: SPAWN.yaw + Math.PI, pos: new THREE.Vector3(), look: new THREE.Vector3(), orbit: 0.6, shake: 0, userYaw: 0, userPitch: 0, userT: 0, fov: 60 };
     this.wipe = { on: false, t: 0, vel: new THREE.Vector3(), spin: new THREE.Vector3(), flipT: 0 };
     this.safe = { x: SPAWN.x, z: SPAWN.z, yaw: SPAWN.yaw, t: 0 };
@@ -305,11 +348,36 @@ class Game {
     store.set('tod', this.timeIndex);
   }
 
+  setupPost(on) {
+    this.bloomOn = false;
+    if (!on) return;
+    try {
+      const w = innerWidth;
+      const h = innerHeight;
+      const rt = new THREE.WebGLRenderTarget(Math.round(w * this.pr), Math.round(h * this.pr), { type: THREE.HalfFloatType, samples: 4 });
+      const c = new EffectComposer(this.renderer, rt);
+      c.addPass(new RenderPass(this.scene, this.camera));
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.3, 0.45, 1.05);
+      c.addPass(this.bloom);
+      c.addPass(new ShaderPass(GradeShader));
+      c.addPass(new OutputPass());
+      this.composer = c;
+      this.bloomOn = true;
+    } catch (e) {
+      console.warn('post effects off:', e);
+      this.composer = null;
+    }
+  }
+
   resize() {
     const w = innerWidth;
     const h = innerHeight;
     this.renderer.setPixelRatio(this.pr);
     this.renderer.setSize(w, h, false);
+    if (this.composer) {
+      this.composer.setPixelRatio(this.pr);
+      this.composer.setSize(w, h);
+    }
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -471,6 +539,62 @@ class Game {
     }
   }
 
+  // The breaking lip caught the rider: it shoves them along with the wave and
+  // down, explodes into white water around them, and a big one landing on a
+  // slow rider takes them out. Punch through it at speed and you ride on.
+  lipHit(dt) {
+    const p = this.phys;
+    const b = this.breakers;
+    const k = b.lipHit;
+    p.vx += b.lipDir.x * 10 * k * dt;
+    p.vz += b.lipDir.z * 10 * k * dt;
+    p.vy -= 7 * k * dt;
+    const now = performance.now();
+    if (now - (this.lipT || -1e9) > 450) {
+      this.lipT = now;
+      const n = Math.round(70 * Math.min(1, k) * (this.effects.density || 1));
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * 1.2;
+        const sv = 3 + Math.random() * 6 * k;
+        this.spray.emit(p.px + Math.cos(a) * r, p.py + 0.3 + Math.random() * 0.8, p.pz + Math.sin(a) * r,
+          b.lipDir.x * sv + Math.cos(a) * 2, 2 + Math.random() * 5 * k, b.lipDir.z * sv + Math.sin(a) * 2,
+          0.8 + Math.random() * 0.9, 0.1 + Math.random() * 0.1, 0.7 + Math.random() * 0.9, 1, 0.6, 0.85, 0.3);
+      }
+      this.foam.stamp(p.px, p.pz, 2.2 + k, 0.9 * k, 1.2 * k);
+      this.cam.shake = Math.max(this.cam.shake, 0.5 + 0.5 * Math.min(1, k));
+      this.input.rumble(0.6 + 0.4 * Math.min(1, k), 0.7, 260);
+      this.audio.splash(Math.min(1, 0.4 + 0.6 * k));
+    }
+    if (b.lipLand && k > 0.55 && p.tele.speed < 11) this.startWipeout('SMASHED BY THE LIP');
+  }
+
+  // frames per second, counted over half a second at a time
+  countFps(dt) {
+    if (!this.showFps) return;
+    this.fpsN = (this.fpsN || 0) + 1;
+    this.fpsT = (this.fpsT || 0) + dt;
+    if (this.fpsT < 0.5) return;
+    const fps = this.fpsN / this.fpsT;
+    const el = $('fpsVal');
+    el.textContent = Math.round(fps);
+    el.className = fps >= 50 ? '' : fps >= 30 ? 'mid' : 'low';
+    $('fpsMs').textContent = ((this.fpsT / this.fpsN) * 1000).toFixed(1) + ' ms';
+    this.fpsN = 0;
+    this.fpsT = 0;
+  }
+
+  setFps(on) {
+    this.showFps = on;
+    $('fps').hidden = !on;
+    this.fpsN = this.fpsT = 0;
+    try {
+      localStorage.setItem('jetski-rider-fps', on ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }
+
   // pressed for a trick the jump could not fit: say why, now and then
   trickTryHint() {
     const now = performance.now();
@@ -491,10 +615,10 @@ class Game {
     const pad = this.input.usingGamepad;
     this.showHint(
       pad
-        ? 'Stand-up: no trim, lean into turns, hold ' + pb('A') + ' to slide. Big jump: hold ' + pb('B') + ' up the face and through the lip to backflip, ' + pb('X') + ' + steer barrel roll. Flat water: hold ' + pb('A') + ' slow to sink the nose, then ' + pb('B') + ' to pop.'
+        ? 'Stand-up: no trim, lean into turns, hold ' + pb('A') + ' to slide. Off a wave: hold ' + pb('B') + ' up the face and through the lip to backflip, steer to spin. Flat water: hold ' + pb('A') + ' slow to sink the nose, then ' + pb('B') + ' to pop.'
         : this.mobile
-          ? 'Stand-up: no trim. Big jump: hold PULL BACK through the lip to backflip, TRICK + steer to barrel roll. Flat water: hold SLIDE slow to sink the nose, then PULL BACK to pop.'
-          : 'Stand-up: no trim, lean into turns, hold <kbd>Shift</kbd> to slide. Big jump: hold <kbd>Space</kbd> up the face and through the lip to backflip, <kbd>X</kbd> + steer barrel roll. Flat water: hold <kbd>Shift</kbd> slow to sink the nose, then <kbd>Space</kbd> to pop.',
+          ? 'Stand-up: no trim. Off a wave: hold PULL BACK through the lip to backflip. Flat water: hold SLIDE slow to sink the nose, then PULL BACK to pop.'
+          : 'Stand-up: no trim, lean into turns, hold <kbd>Shift</kbd> to slide. Off a wave: hold <kbd>Space</kbd> up the face and through the lip to backflip, steer to spin. Flat water: hold <kbd>Shift</kbd> slow to sink the nose, then <kbd>Space</kbd> to pop.',
       11
     );
   }
@@ -511,7 +635,7 @@ class Game {
     $('boostRow').hidden = !turbo;
     $('btnAls').hidden = !turbo;
     $('btnAls').classList.toggle('on', turbo && this.phys.als);
-    $('tTrick').hidden = false; // Superman on sit-downs, barrel roll on stand-ups
+    $('tTrick').hidden = !!this.spec.standup; // Superman on sit-downs
     // stand-ups have no trim system, so no VTS gauge
     document.querySelector('#hud .vts').hidden = !!this.spec.standup;
     $('trimVal').parentElement.hidden = !!this.spec.standup;
@@ -952,6 +1076,7 @@ class Game {
       this.refreshMenu();
     }
     if (inp.was('KeyH')) $('help').hidden = !$('help').hidden;
+    if (inp.was('KeyI')) this.setFps(!this.showFps);
     if (this.state === 'ride') {
       if (inp.was('KeyC')) this.nextCam();
       if (inp.was('KeyF')) this.setCam(this.camMode === 4 ? 0 : 4);
@@ -1056,8 +1181,8 @@ class Game {
 
   ctlHint() {
     if (this.spec.standup) {
-      if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · hold ' + pb('A') + ' to slide · ' + pb('B') + ' backflip · ' + pb('X') + ' + steer barrel roll';
-      return this.mobile ? 'Hold GAS to go. Lean into turns. PULL BACK off big launches to backflip.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · hold <kbd>Shift</kbd> to slide · <kbd>Space</kbd> backflip · <kbd>X</kbd> + steer barrel roll';
+      if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · hold ' + pb('A') + ' to slide · ' + pb('B') + ' backflip';
+      return this.mobile ? 'Hold GAS to go. Lean into turns. PULL BACK off big launches to backflip.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · hold <kbd>Shift</kbd> to slide · <kbd>Space</kbd> backflip';
     }
     if (this.input.usingGamepad) return pb('RT') + ' gas · ' + pb('LS') + ' steer · ' + pb('LB') + pb('RB') + ' trim · ' + pb('B') + ' pull back · hold ' + pb('A') + ' to slide · ' + pb('X') + ' look back (Superman in the air)';
     return this.mobile ? 'Hold GAS to go. No gas means no steering. TRIM + for rooster tails. TRICK in the air for a Superman.' : '<kbd>W</kbd> gas · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>E</kbd>/<kbd>Q</kbd> trim · <kbd>Space</kbd> pull back · hold <kbd>Shift</kbd> to slide · <kbd>X</kbd> Superman in the air';
@@ -1154,6 +1279,7 @@ class Game {
     this.last = now;
     if (!(dt > 0)) dt = 1 / 60;
     this.frameMs = lerp(this.frameMs, dt * 1000, 0.05);
+    this.countFps(dt);
     if (dt > 0.05) dt = 0.05;
     const p = this.phys;
     const T = p.tele;
@@ -1216,8 +1342,10 @@ class Game {
       return g > wy ? g : wy;
     }, bound, this.foam);
     // breaking surf: lips, barrels, spray and whitewater foam (only nearby)
-    if (Math.hypot(p.px - WAVE_ZONE.x, p.pz - WAVE_ZONE.z) < 1100) this.breakers.update(dt, time, p, this.effects.density);
-    else {
+    if (Math.hypot(p.px - WAVE_ZONE.x, p.pz - WAVE_ZONE.z) < 1100) {
+      this.breakers.update(dt, time, p, this.effects.density);
+      if (this.breakers.lipHit > 0.06 && this.state === 'ride' && !this.wipe.on) this.lipHit(dt);
+    } else {
       this.breakers.mesh.visible = false;
       this.breakers.roar = 0;
     }
@@ -1273,7 +1401,10 @@ class Game {
     // controller rumble follows the engine; hits and landings jolt it
     const rumbling = this.state === 'ride' && !this.wipe.on;
     this.input.rumbleEngine(rumbling ? 0.12 + 0.55 * T.power * T.pumpLoad + (this.audio.limiter || 0) * 0.6 + (T.lcArmed ? 0.35 : 0) : 0, dt);
-    if (!this.noRender) this.renderer.render(this.scene, this.camera);
+    if (!this.noRender) {
+      if (this.bloomOn && this.composer) this.composer.render(dt);
+      else this.renderer.render(this.scene, this.camera);
+    }
     if (!this.fixedQuality) this.adaptQuality(dt);
     this.frames = (this.frames || 0) + 1;
   }
@@ -1314,6 +1445,18 @@ class Game {
     const dx = WAVE_ZONE.x - p.px;
     const dz = WAVE_ZONE.z - p.pz;
     const d = Math.hypot(dx, dz) - WAVE_ZONE.rIn;
+    // a bigger set on the horizon: say so while there is time to get there
+    if (d < 450 && this.state === 'ride') {
+      const S = this.waves.surf;
+      S.update(p.time);
+      for (let i = 0; i < S.count; i++) {
+        const w = S.waves[i];
+        if (w.big > 1.2 && w.sc > -260 && w.sc < -140 && this.announcedSet !== w.set) {
+          this.announcedSet = w.set;
+          this.showHint(w.big > 1.6 ? '<b>HUGE SET</b> rolling in. Get out the back and line one up!' : 'Bigger set rolling in.', 4);
+        }
+      }
+    }
     const show = this.state === 'ride' && !this.wipe.on;
     const inside = d <= 120;
     if (el.hidden === show) el.hidden = !show;
@@ -1344,6 +1487,8 @@ class Game {
     if (ms > 26 && pr > 0.6) pr = Math.max(0.6, pr - 0.2);
     else if (ms < 14 && pr < this.maxPR) pr = Math.min(this.maxPR, pr + 0.1);
     if (ms > 30) this.effects.density = Math.max(0.35, this.effects.density - 0.15);
+    // struggling: the glow goes first
+    if (ms > 30 && this.bloomOn) this.bloomOn = false;
     if (pr !== this.pr) {
       this.pr = pr;
       this.resize();

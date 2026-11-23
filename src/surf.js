@@ -34,6 +34,9 @@ export const SURF = {
 SURF.period = SURF.setN * SURF.gap + SURF.lull;
 SURF.life = (SURF.endS - SURF.spawnS) / SURF.c;
 
+// waves in a set build to the third and ease off again
+const SET_SHAPE = [0.92, 1.0, 1.07, 0.97];
+
 function hash(k, s) {
   const x = Math.sin(k * 127.1 + s * 311.7) * 43758.5453;
   return x - Math.floor(x);
@@ -50,7 +53,7 @@ export class Surf {
     this.cx = WAVE_ZONE.x;
     this.cz = WAVE_ZONE.z;
     this.waves = [];
-    for (let i = 0; i < SURF.max; i++) this.waves.push({ k: 0, sc: 0, amp: 0, faceW: 9, backW: 16, lp: 0, pd: -1, half: 90, lc: 0, sb: 0 });
+    for (let i = 0; i < SURF.max; i++) this.waves.push({ k: 0, sc: 0, amp: 0, faceW: 9, backW: 16, lp: 0, pd: -1, half: 90, lc: 0, sb: 0, big: 1, set: 0 });
     this.count = 0;
     this._t = NaN;
     // GPU payload
@@ -58,6 +61,18 @@ export class Surf {
     this.uB = new Float32Array(SURF.max * 4); // lp, pd, half, lc
     this.uC = new Float32Array([this.dx, this.dz, this.cx, this.cz]);
     this._o = { h: 0, foam: 0, q: -1, sl: 0, reach: 0 };
+  }
+
+  // Every set has a size. In each run of six sets (about six and a half
+  // minutes) one is huge and two are bigger, in no fixed order, so a big one
+  // is never far away but you cannot quite tell when.
+  setScale(set) {
+    const block = Math.floor(set / 6);
+    const i = set - block * 6;
+    const huge = Math.floor(hash(block, 7) * 6);
+    const b1 = (huge + 1 + Math.floor(hash(block, 8) * 2)) % 6;
+    const b2 = (huge + 3 + Math.floor(hash(block, 9) * 2)) % 6;
+    return i === huge ? 1.8 : i === b1 || i === b2 ? 1.35 : 1.0;
   }
 
   spawnTime(k) {
@@ -77,16 +92,22 @@ export class Surf {
       const age = t - this.spawnTime(k);
       if (age < 0 || age > SURF.life) continue;
       const w = this.waves[n++];
+      const set = Math.floor(k / SURF.setN);
+      const big = this.setScale(set);
       const sc = SURF.spawnS + SURF.c * age;
-      const sb = SURF.sBreak + (hash(k, 2) - 0.5) * 40;
+      // big waves feel the bottom sooner and break further out
+      const sb = SURF.sBreak + (hash(k, 2) - 0.5) * 40 - (big - 1) * 40;
       const sh = smooth(SURF.spawnS, sb, sc);
       const fade = smooth(0, 9, age) * (1 - smooth(SURF.endS - 90, SURF.endS, sc));
       w.k = k;
       w.sc = sc;
       w.sb = sb;
-      w.amp = SURF.A0 * (0.85 + hash(k, 3) * 0.3) * (0.45 + 0.55 * sh) * fade;
-      w.faceW = 9.5 - 5.6 * sh * sh;
-      w.backW = 17;
+      w.big = big;
+      w.set = set;
+      w.amp = SURF.A0 * (0.85 + hash(k, 3) * 0.3) * big * SET_SHAPE[k - set * SURF.setN] * (0.45 + 0.55 * sh) * fade;
+      // (bigger waves are longer from front to back too)
+      w.faceW = (9.5 - 5.6 * sh * sh) * (0.7 + 0.3 * big);
+      w.backW = 17 * (0.7 + 0.3 * big);
       w.lp = (hash(k, 4) - 0.5) * 100; // where it peaks
       w.lc = w.lp * 0.4 + (hash(k, 5) - 0.5) * 30; // middle of the crest
       w.half = 65 + hash(k, 6) * 55; // half the crest length before it fades
@@ -136,7 +157,7 @@ export class Surf {
       // the section about to break stands up near vertical
       // the section about to break stands up near vertical, and stays that way
       // under the open tube until it collapses
-      if (w.pd >= 0) fw += (2.9 - fw) * (al > w.pd ? 1 - smooth(0, 40, al - w.pd) : 1);
+      if (w.pd >= 0) fw += (Math.max(2.9, 1.05 * w.amp) - fw) * (al > w.pd ? 1 - smooth(0, 40, al - w.pd) : 1);
       const prof = sl > 0 ? Math.exp(-(sl * sl) / (fw * fw)) : Math.exp(-(sl * sl) / (w.backW * w.backW));
       const tr = (sl - 2.2 * fw) / (1.4 * fw);
       let h = w.amp * (prof - 0.1 * Math.exp(-tr * tr));
@@ -206,7 +227,7 @@ float surfField(vec2 p, out float foam) {
     if (env <= 0.002) continue;
     float al = abs(l - B.x);
     float fw = A.z;
-    if (B.y >= 0.0) fw += (2.9 - fw) * (al > B.y ? 1.0 - smoothstep(0.0, 40.0, al - B.y) : 1.0);
+    if (B.y >= 0.0) fw += (max(2.9, 1.05 * A.y) - fw) * (al > B.y ? 1.0 - smoothstep(0.0, 40.0, al - B.y) : 1.0);
     float prof = sl > 0.0 ? exp(-(sl * sl) / (fw * fw)) : exp(-(sl * sl) / (A.w * A.w));
     float tr = (sl - 2.2 * fw) / (1.4 * fw);
     float h = A.y * (prof - 0.1 * exp(-tr * tr));

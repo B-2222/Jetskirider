@@ -19,7 +19,10 @@
   <!-- ===================== HUD ===================== -->
   <div id="hud" hidden>
     <div class="hud-top">
-      <div class="chip" id="skiChip"><span class="chip-brand">SEA-DOO</span><span id="skiName">SPARK TRIXX</span><span class="chip-tag" id="alsTag" hidden>ALS</span></div>
+      <div class="chip-col">
+        <div class="chip" id="skiChip"><span class="chip-brand">SEA-DOO</span><span id="skiName">SPARK TRIXX</span><span class="chip-tag" id="alsTag" hidden>ALS</span></div>
+        <div class="fps" id="fps" title="Frames per second (I to hide)"><b id="fpsVal">--</b> FPS <span id="fpsMs"></span></div>
+      </div>
       <div class="score">
         <div class="score-row"><span class="lbl">SCORE</span><span class="val" id="score">0</span></div>
         <div class="score-row dim"><span class="lbl">BEST</span><span class="val" id="best">0</span></div>
@@ -140,9 +143,10 @@
         <div><kbd>B</kbd></div><div>Look behind you (toggle)</div>
         <div><kbd>S</kbd> + <kbd>W</kbd> stopped</div><div>Launch control (RXP-X skis): hold both, let go of <kbd>S</kbd> to launch</div>
         <div><kbd>N</kbd></div><div>Rolling anti-lag on/off (600 turbo)</div>
-        <div><kbd>X</kbd></div><div>Trick button: Superman in the air on sit-downs · with steering, barrel roll on stand-ups</div>
+        <div><kbd>X</kbd></div><div>Superman in the air (sit-down skis)</div>
         <div><kbd>R</kbd></div><div>Reset to open water</div>
         <div><kbd>G</kbd></div><div>Go to the wave zone (and back)</div>
+        <div><kbd>I</kbd></div><div>Show / hide the FPS counter</div>
         <div><kbd>T</kbd> / <kbd>V</kbd></div><div>Change light / water</div>
         <div><kbd>M</kbd> · <kbd>Esc</kbd></div><div>Sound · Garage</div>
       </div>
@@ -152,7 +156,7 @@
         <div><span class="pb pb-LS">LS</span></div><div>Steer. Push down to pull back, up to lean forward</div>
         <div><span class="pb pb-A">A</span> <span class="pb pb-B">B</span></div><div>Hold to slide · hold to pull back (wheelies)</div>
         <div><span class="pb pb-LB">LB</span> <span class="pb pb-RB">RB</span></div><div>Trim down · trim up</div>
-        <div><span class="pb pb-X">X</span> <span class="pb pb-Y">Y</span></div><div>Hold to look behind (in the air: Superman on sit-downs, trick button on stand-ups) · change camera</div>
+        <div><span class="pb pb-X">X</span> <span class="pb pb-Y">Y</span></div><div>Hold to look behind (in the air on a sit-down: Superman) · change camera</div>
         <div><span class="pb pb-RS">RS</span></div><div>Look around · click for first person</div>
         <div><span class="pb pb-UP">▲</span> <span class="pb pb-DOWN">▼</span></div><div>Wave zone · reset</div>
         <div><span class="pb pb-LEFT">◀</span> <span class="pb pb-RIGHT">▶</span></div><div>Look-behind toggle · first person</div>
@@ -161,7 +165,7 @@
       </div>
       <h3>TRICKS</h3>
       <ul>
-        <li><b>Stand-ups:</b> no trim; lean the whole ski into turns, hold <kbd>Shift</kbd> to slide. In the air: <kbd>Space</kbd> backflip, <kbd>X</kbd> + steer barrel roll, steer to spin. Flips need a decent wave jump (on a smaller one the rider tucks tighter to get round). Hold <kbd>Space</kbd> up the face and through the lip for the biggest flips. Let go once the rotation is under way and the rider lands it.</li>
+        <li><b>Stand-ups:</b> no trim; lean the whole ski into turns, hold <kbd>Shift</kbd> to slide. In the air: <kbd>Space</kbd> backflip, steer to spin. Flips need a decent wave jump (on a smaller one the rider tucks tighter to get round). Hold <kbd>Space</kbd> up the face and through the lip for the biggest flips. Let go once the rotation is under way and the rider lands it.</li>
         <li><b>Flat-water backflip (stand-ups):</b> at low speed hold <kbd>Shift</kbd> without steering to sink the nose, then hit <kbd>Space</kbd>: the nose pops out of the water. Keep holding <kbd>Space</kbd> to flip.</li>
         <li><b>Superman (sit-downs):</b> off a wave jump press <kbd>X</kbd> right after take-off: the rider hangs on to the bars and kicks their legs out behind the ski. Let go before you land or you bail. Combine it with a lip spin for a SUPERMAN + 360.</li>
         <li><b>Carve:</b> just steer. The ski stays hooked up, banks over and throws a fan of water off the outside.</li>
