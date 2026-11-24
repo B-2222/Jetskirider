@@ -60,7 +60,7 @@ In the garage the D-pad or left stick moves between buttons, `A` picks, `B` goes
 The Freestyle and Race stand-ups ride differently: no trim, a light hull that you lean right over into turns (`Shift` still slides it), no reverse, and a two-stroke engine. They flip.
 
 - Off a jump: `Space` backflip, steer to spin. Let go once the flip is under way and the rider lands it.
-- Flips need a decent wave jump; on a smaller one the rider tucks tighter to get round in time. If the jump really is too small (or you press too late) the game tells you. Hold `Space` up the face and through the lip for the biggest flips. The Freestyle rotates faster and can double off the biggest sets.
+- Space starts the flip as soon as you are in the air, whatever the jump. On a smaller one the rider tucks tighter to get round, but too small and you will not make it. Hold `Space` up the face and through the lip for the biggest flips. The Freestyle rotates faster and can double off the biggest sets.
 - Flat-water backflip: at low speed hold `Shift` without steering to sink the nose, then hit `Space`. The nose pops out of the water; keep holding `Space` to flip.
 
 ## Online

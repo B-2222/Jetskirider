@@ -652,7 +652,7 @@ export class SkiPhysics {
       if (h.lean < -0.3 && c.lean >= -0.3) h.lean = 0;
       if (Math.abs(h.steer) > 0.3 && Math.abs(sN) <= 0.3) h.steer = 0;
       if (h.trick > 0.5 && c.trick <= 0.5) h.trick = 0;
-      if (h.lean < -0.3 && c.lean < -0.3 && h.vy < 3.8 && !this.airOkF) aLean = 0;
+      if (!sp.standup && h.lean < -0.3 && c.lean < -0.3 && h.vy < 3.8) aLean = 0;
       if (Math.abs(h.steer) > 0.3 && Math.abs(sN) > 0.3) aSteer = 0;
       if (h.trick > 0.5) aTrick = false;
       // a strong launch, or a medium one that has already been airborne for
@@ -661,7 +661,9 @@ export class SkiPhysics {
       // medium jump, a flip or roll a big one.
       const real = T.airTime > 0.12 && (h.vy >= 3.8 || (T.airTime > 0.45 && h.vy >= 2.5));
       const okS = this.airOkS;
-      const okF = sp.standup ? this.airOkF : real;
+      // stand-ups: pull back in the air and the flip starts, however much air
+      // is left (too little and you under-rotate: that is on you)
+      const okF = sp.standup ? T.airTime > 0.06 : real;
       if (!okF) {
         aLean = Math.max(aLean, 0);
         aSteer = 0;
@@ -670,7 +672,7 @@ export class SkiPhysics {
       // and only START while there is still time to finish it: a press late in
       // the flight does nothing (a trick already under way carries on)
       const leftNow = this.airEnd - T.airTime;
-      if (sp.standup ? !this.airDriven && leftNow < this.trickNeed - 0.1 : this.superman < 0.1 && leftNow < 0.35) {
+      if (!sp.standup && this.superman < 0.1 && leftNow < 0.35) {
         aLean = Math.max(aLean, 0);
         aSteer = sp.standup ? 0 : aSteer;
         aTrick = false;
@@ -683,7 +685,7 @@ export class SkiPhysics {
     const held = this.airHeld && (sp.standup ? this.airHeld.lean < -0.3 : this.airHeld.trick > 0.5);
     const asked = !held && (sp.standup ? c.lean < -0.5 : c.trick > 0.5);
     const got = sp.standup ? aLean < -0.3 : aTrick;
-    T.trickTry = air && T.airTime > 0.3 && asked && !got && !this.airDriven && this.superman < 0.1 ? 1 : 0;
+    T.trickTry = !sp.standup && air && T.airTime > 0.3 && asked && !got && !this.airDriven && this.superman < 0.1 ? 1 : 0;
     // sit-downs: trick button in the air = Superman (hands on the bars, legs
     // kicked out behind the ski); get back on the seat before you land
     this.superman = damp(this.superman, !sp.standup && air && aTrick ? 1 : 0, aTrick ? 0.09 : 0.07, dt);
@@ -779,7 +781,7 @@ export class SkiPhysics {
     // round at the lip. Only a turn that is already happening gets carried
     // into the air: no turn at take-off, no spin.
     // A stand-up rider who is already pulling back at the lip pops the flip.
-    if (sp.standup && air && !this.wasAir && c.lean < -0.4 && this.vy > 3.8 && this.airLeftRot >= this.trickNeed) {
+    if (sp.standup && air && !this.wasAir && c.lean < -0.4 && this.vy > 3.8) {
       this.wx += rx * 2.0; this.wy += ry * 2.0; this.wz += rz * 2.0;
     }
     if (air && !this.wasAir && this.vy > 2.5 && Math.abs(sN) > 0.5 && Math.abs(yawRateR) > 0.6 && Math.sign(sN) === Math.sign(yawRateR)) {
