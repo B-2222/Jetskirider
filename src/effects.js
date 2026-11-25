@@ -37,7 +37,10 @@ export class SkiEffects {
     let level = 0;
 
     // ------------------------------------------------------------------ jet
-    const flow = clamp(T.power * T.pumpLoad, 0, 1);
+    // water still in the pump keeps the jet going for a moment after the
+    // intake leaves the water (a hop at speed doesn't cut it dead)
+    this.held = Math.max(T.pumpLoad, (this.held || 0) * Math.exp(-dt / 0.3));
+    const flow = clamp(T.power * this.held, 0, 1);
     const e = T.exposure;
     const d = Math.max(T.nozzleDepth, 0);
     // the jet leaves along the nozzle as it is drawn (swinging further than
@@ -84,11 +87,11 @@ export class SkiEffects {
         const ly = jd.y * (1 + trimK * 1.25) + kick + trimLift * (1 - e * 0.5);
         const ll = Math.hypot(jd.x, ly, jd.z) || 1;
         const mg = this.mega;
-        this.jet.feed(dt, nx, ny, nz, nv.x, nv.y, nv.z, jd.x / ll, ly / ll, jd.z / ll, vjet * (1 + 0.2 * (mg - 1)), Math.min(1, flow * out * mg), (0.8 + 0.5 * (1 - e) - trimK * 0.15) * Math.sqrt(mg));
+        this.jet.feed(dt, nx, ny, nz, nv.x, nv.y, nv.z, jd.x / ll, ly / ll, jd.z / ll, vjet * (1 + 0.2 * (mg - 1)), Math.min(1, flow * out * mg), (0.8 + 0.5 * (1 - e) - trimK * 0.15 + T.speed / 80) * Math.sqrt(mg));
         this.jetOut = flow * out;
       }
       // the droplets are now only the fringe of the stream
-      n = Math.round(n * 0.12 * this.mega);
+      n = Math.round(n * 0.5 * this.mega);
       for (let i = 0; i < n; i++) {
         const sp = spread * (0.3 + rnd() * rnd() * 2.2);
         const dx = jd.x + rs() * sp, dy = jd.y * boost + rs() * sp * 0.8 + sp * 0.25, dz = jd.z + rs() * sp;
@@ -102,13 +105,13 @@ export class SkiEffects {
           nx + vx * k + rs() * 0.06, ny + vy * k + rs() * 0.04, nz + vz * k + rs() * 0.06,
           vx, vy, vz,
           (1.5 + rnd() * 1.6) * (1 + trimK * 0.4),
-          core ? 0.06 + rnd() * 0.04 : 0.09 + rnd() * 0.06,
-          (core ? 0.22 + rnd() * 0.25 : 0.35 + rnd() * 0.4) * grow,
+          core ? 0.09 + rnd() * 0.06 : 0.13 + rnd() * 0.1,
+          (core ? 0.36 + rnd() * 0.38 : 0.55 + rnd() * 0.65) * grow,
           1, core ? 0.09 : 0.36, core ? 1.0 : 0.72, 0.12
         );
       }
       // hanging mist around the tail
-      this.acc.mist += rate * (0.05 + e * 0.06) * dt;
+      this.acc.mist += rate * (0.08 + e * 0.09) * dt;
       let m = this.acc.mist | 0;
       this.acc.mist -= m;
       for (let i = 0; i < m; i++) {
@@ -116,7 +119,7 @@ export class SkiEffects {
         S.emit(
           nx + rs() * 0.1, ny + rnd() * 0.1, nz + rs() * 0.1,
           nv.x * 0.4 + (jd.x + rs() * 0.25) * sv, nv.y * 0.3 + (jd.y * boost + rnd() * 0.25) * sv, nv.z * 0.4 + (jd.z + rs() * 0.25) * sv,
-          (1.4 + rnd() * 1.2) * (1 + trimK * 0.4), 0.18, (0.55 + rnd() * 0.6) * (1 + trimK * 0.3), 0.3, 1.4, 0.13, 0.03
+          (1.5 + rnd() * 1.3) * (1 + trimK * 0.4), 0.2, (0.8 + rnd() * 0.75) * (1 + trimK * 0.4), 0.3, 1.4, 0.14, 0.03
         );
       }
       // hitting the gas with the nozzle clear of the water: the pump coughs
