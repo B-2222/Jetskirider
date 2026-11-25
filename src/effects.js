@@ -18,6 +18,11 @@ export class SkiEffects {
     this.burstCool = 0;
     this.density = 1;
     this.sprayLevel = 0; // 0..1, for audio
+    // the jet itself and the pump wash: set by the game (JetStream)
+    this.jet = null;
+    this.wash = null;
+    this.jetOut = 0; // how much jet is out in the air, and how much wash (shared online)
+    this.washAmt = 0;
   }
 
   update(dt, phys, time) {
@@ -54,6 +59,20 @@ export class SkiEffects {
       this.acc.jet -= n;
       if (n > 460) n = 460;
       const boost = 1 + trimK * 1.15;
+      // The jet as one connected stream of water: a rope at the nozzle that
+      // spreads into spray and mist as it flies. Held together longer when it
+      // comes out clean in the air with the trim up.
+      if (this.jet) {
+        // trimmed up the jet climbs, and leaving right at the waterline it
+        // kicks up off the surface: that is what throws the rooster tail high
+        const kick = (1 - e) * Math.exp(-d / 0.12) * (0.08 + 0.2 * trimK);
+        const ly = jd.y * (1 + trimK * 1.25) + kick;
+        const ll = Math.hypot(jd.x, ly, jd.z) || 1;
+        this.jet.feed(dt, nx, ny, nz, nv.x, nv.y, nv.z, jd.x / ll, ly / ll, jd.z / ll, vjet, flow * out, 0.8 + 0.5 * (1 - e) - trimK * 0.15);
+        this.jetOut = flow * out;
+      }
+      // the droplets are now only the fringe of the stream
+      n = Math.round(n * 0.12);
       for (let i = 0; i < n; i++) {
         const sp = spread * (0.3 + rnd() * rnd() * 2.2);
         const dx = jd.x + rs() * sp, dy = jd.y * boost + rs() * sp * 0.8 + sp * 0.25, dz = jd.z + rs() * sp;
@@ -67,13 +86,13 @@ export class SkiEffects {
           nx + vx * k + rs() * 0.06, ny + vy * k + rs() * 0.04, nz + vz * k + rs() * 0.06,
           vx, vy, vz,
           (1.5 + rnd() * 1.6) * (1 + trimK * 0.4),
-          core ? 0.09 + rnd() * 0.06 : 0.13 + rnd() * 0.1,
-          (core ? 0.38 + rnd() * 0.4 : 0.6 + rnd() * 0.7) * grow,
+          core ? 0.06 + rnd() * 0.04 : 0.09 + rnd() * 0.06,
+          (core ? 0.22 + rnd() * 0.25 : 0.35 + rnd() * 0.4) * grow,
           1, core ? 0.09 : 0.36, core ? 1.0 : 0.72, 0.12
         );
       }
       // hanging mist around the tail
-      this.acc.mist += rate * (0.1 + e * 0.12) * dt;
+      this.acc.mist += rate * (0.05 + e * 0.06) * dt;
       let m = this.acc.mist | 0;
       this.acc.mist -= m;
       for (let i = 0; i < m; i++) {
@@ -81,7 +100,7 @@ export class SkiEffects {
         S.emit(
           nx + rs() * 0.1, ny + rnd() * 0.1, nz + rs() * 0.1,
           nv.x * 0.4 + (jd.x + rs() * 0.25) * sv, nv.y * 0.3 + (jd.y * boost + rnd() * 0.25) * sv, nv.z * 0.4 + (jd.z + rs() * 0.25) * sv,
-          (1.6 + rnd() * 1.4) * (1 + trimK * 0.5), 0.25, (1.0 + rnd() * 0.9) * (1 + trimK * 0.5), 0.3, 1.4, 0.15, 0.03
+          (1.4 + rnd() * 1.2) * (1 + trimK * 0.4), 0.18, (0.55 + rnd() * 0.6) * (1 + trimK * 0.3), 0.3, 1.4, 0.13, 0.03
         );
       }
       // hitting the gas with the nozzle clear of the water: the pump coughs
@@ -101,6 +120,23 @@ export class SkiEffects {
       level += flow * out;
       this.rooster = flow * out * clamp(jd.y * 3.2, 0, 1);
 
+      // Pump wash: with the nozzle under the surface the jet boils up behind
+      // the stern and throws a low plume back, bigger the harder the pump is
+      // working and the closer to the surface it is.
+      if (this.wash) {
+        // (it boils under a rooster tail too, whenever the nozzle is near the
+        // surface: the white water underneath the arch)
+        const nd = T.nozzleDepth;
+        const shallow = nd >= 0 ? Math.exp(-nd / 0.3) : 1 - smoothstep(0, 0.4, -nd);
+        const hx = jd.x, hz = jd.z;
+        const hl = Math.hypot(hx, hz) || 1;
+        const up = (1.0 + 4.2 * flow) * (0.4 + 0.6 * Math.min(1, T.speed / 12));
+        const wv = vjet * 0.42;
+        const wl = Math.hypot(wv, up) || 1;
+        this.washAmt = flow * shallow * clamp(flow * 1.6, 0, 1) * 0.85;
+        this.wash.feed(dt, nx - (hx / hl) * 0.25, T.waterAtNozzle + 0.04, nz - (hz / hl) * 0.25, nv.x * 0.55, 0, nv.z * 0.55,
+          ((hx / hl) * wv) / wl, up / wl, ((hz / hl) * wv) / wl, wl, this.washAmt, 1);
+      }
       // prop wash on the surface right behind the pump
       if (T.wet > 0.05 || d > 0) {
         const wx = nx - fhx * 0.5, wz = nz - fhz * 0.5;
@@ -108,6 +144,12 @@ export class SkiEffects {
         F.stamp(wx, wz, 0.4 + 0.25 * flow, (0.25 + flow * 1.3) * dt * 2.6 * mv2, (0.3 + flow) * dt * 4);
         F.stamp(wx - fhx * 0.9 + rs() * 0.3, wz - fhz * 0.9 + rs() * 0.3, 0.45 + 0.3 * flow, flow * dt * 1.6 * mv2, flow * dt * 5);
       }
+    }
+    if (!(flow > 0.015 && !reversing)) {
+      // pump idle: no water to follow (and no bridge to wherever it starts next)
+      if (this.jet) this.jet.last = null;
+      if (this.wash) this.wash.last = null;
+      this.jetOut = this.washAmt = 0;
     }
     this.prevPower += (T.power - this.prevPower) * Math.min(1, dt * 6);
 

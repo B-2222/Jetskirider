@@ -12,6 +12,11 @@ import { Ocean, FoamField } from './water.js';
 import { Spray } from './particles.js';
 import { Breakers } from './breakers.js';
 import { SkiEffects } from './effects.js';
+import { JetStream } from './jetstream.js';
+import { WetLens } from './wetlens.js';
+
+// names come from other players: keep them out of anything read as HTML
+const plain = (s) => String(s || '').replace(/[<>&"'`]/g, '');
 import { JetskiModel } from './jetski.js';
 import { Rider } from './rider.js';
 import { buildTerrainMesh, buildVegetation, buildRampMesh, buildZoneArch, Buoys } from './scenery.js';
@@ -168,6 +173,11 @@ class Game {
     this.spec = SKIS[this.skiIndex];
     this.phys = new SkiPhysics(this.spec, this.world);
     this.effects = new SkiEffects(this.spray, this.foam, this.world);
+    // the jet as a real stream of water, and the wash it throws up when the
+    // pump is under the surface
+    this.effects.jet = new JetStream(this.spray.uniforms);
+    this.effects.wash = new JetStream(this.spray.uniforms, { wide: 1.7, sheath: 1.45 });
+    this.scene.add(this.effects.jet.mesh, this.effects.wash.mesh);
     if (coarse) this.effects.density = 0.6;
     this.skiGroup = new THREE.Group();
     this.scene.add(this.skiGroup);
@@ -178,6 +188,7 @@ class Game {
       this.popTrick(label, pts, kind);
       if (kind !== 'note' && this.mp) this.mp.noteTrick(label, pts);
     });
+    this.wetLens = new WetLens(document.body);
     this.mp = new Multiplayer(this);
     this.mp.onChange = () => this.refreshMp();
     this.input.onPadChange = () => this.refreshPadUi();
@@ -567,6 +578,53 @@ class Game {
       this.audio.splash(Math.min(1, 0.4 + 0.6 * k));
     }
     if (b.lipLand && k > 0.55 && p.tele.speed < 11) this.startWipeout('SMASHED BY THE LIP');
+  }
+
+  // Online: someone's jet catching you (water all over your lens), and yours
+  // catching them (a burst of spray on them, and points). Each game works
+  // this out from the streams it draws, so both players see the same thing.
+  sprayHits(dt) {
+    const mp = this.mp;
+    if (!mp.lobbyId || !mp.remotes.size) return;
+    this.sprayT = (this.sprayT || 0) + dt;
+    if (this.sprayT < 1 / 30) return;
+    this.sprayT = 0;
+    const p = this.phys;
+    const now = performance.now();
+    for (const r of mp.remotes.values()) {
+      if (!r.jet || !r.state) continue;
+      const theirs = r.jet.hits(p.px, p.py + 0.9, p.pz, 0.7) + 0.4 * r.wash.hits(p.px, p.py + 0.5, p.pz, 0.7);
+      if (theirs > 0.8) {
+        const k = Math.min(1, theirs / 6);
+        this.wetLens.splash(k);
+        this.splashAt(p.px, p.py + 0.9, p.pz, k, r.vel);
+        this.input.rumble(0.3 + 0.5 * k, 0.6, 160);
+        if (now - (r.hitMeT || -1e9) > 3500) {
+          r.hitMeT = now;
+          this.showHint('<b>' + plain(r.name) + '</b> sprayed you!', 2);
+        }
+      }
+      const mine = this.effects.jet.hits(r.pos.x, r.pos.y + 0.9, r.pos.z, 0.7) + 0.4 * this.effects.wash.hits(r.pos.x, r.pos.y + 0.5, r.pos.z, 0.7);
+      if (mine > 0.8) {
+        this.splashAt(r.pos.x, r.pos.y + 0.9, r.pos.z, Math.min(1, mine / 6), p.tele.nozzleVel);
+        if (now - (r.hitThemT || -1e9) > 3000) {
+          r.hitThemT = now;
+          this.tricks.award('SPRAYED ' + plain(r.name).toUpperCase(), 150);
+        }
+      }
+    }
+  }
+
+  // water bursting off someone who is being hosed
+  splashAt(x, y, z, k, v) {
+    const n = Math.round((8 + 30 * k) * (this.effects.density || 1));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 1.5 + Math.random() * 4 * k;
+      this.spray.emit(x + Math.cos(a) * 0.4, y + (Math.random() - 0.3) * 0.8, z + Math.sin(a) * 0.4,
+        Math.cos(a) * sp + (v ? v.x * 0.15 : 0), 1 + Math.random() * 3, Math.sin(a) * sp + (v ? v.z * 0.15 : 0),
+        0.5 + Math.random() * 0.6, 0.07 + Math.random() * 0.06, 0.3 + Math.random() * 0.4, 1, 0.6, 0.8, 0.15);
+    }
   }
 
   // frames per second, counted over half a second at a time
@@ -1335,12 +1393,15 @@ class Game {
     const waves = this.waves;
     const terrain = this.terrain;
     const tmp = this._d || (this._d = {});
-    this.spray.update(dt, (x, z) => {
+    const surfAt = (this._surfAt = (x, z) => {
       const wy = waves.displace(x, z, time, tmp).y;
       if (!shallow) return wy;
       const g = terrain.heightAt(x, z);
       return g > wy ? g : wy;
-    }, bound, this.foam);
+    });
+    this.spray.update(dt, surfAt, bound, this.foam);
+    this.effects.jet.update(dt, surfAt, this.foam, this.spray, this.effects.density);
+    this.effects.wash.update(dt, surfAt, this.foam, null, this.effects.density);
     // breaking surf: lips, barrels, spray and whitewater foam (only nearby)
     if (Math.hypot(p.px - WAVE_ZONE.x, p.pz - WAVE_ZONE.z) < 1100) {
       this.breakers.update(dt, time, p, this.effects.density);
@@ -1395,6 +1456,8 @@ class Game {
 
     // other riders, their name tags and the lobby board
     this.mp.update(dt, this.camera.position);
+    if (this.state === 'ride' && !this.wipe.on) this.sprayHits(dt);
+    this.wetLens.update(dt);
     this.mp.tags(this.camera);
     if (this.state === 'ride') this.updateHUD(dt);
     this.audio.update(T, p.ctrl, this.effects.sprayLevel, this.state !== 'ride', dt);
@@ -1402,6 +1465,10 @@ class Game {
     const rumbling = this.state === 'ride' && !this.wipe.on;
     this.input.rumbleEngine(rumbling ? 0.12 + 0.55 * T.power * T.pumpLoad + (this.audio.limiter || 0) * 0.6 + (T.lcArmed ? 0.35 : 0) : 0, dt);
     if (!this.noRender) {
+      const cd = this.camera.getWorldDirection(this._camDir || (this._camDir = new THREE.Vector3()));
+      this.effects.jet.build(this.camera.position, cd);
+      this.effects.wash.build(this.camera.position, cd);
+      this.mp.buildJets(this.camera.position, cd);
       if (this.bloomOn && this.composer) this.composer.render(dt);
       else this.renderer.render(this.scene, this.camera);
     }
@@ -1420,6 +1487,8 @@ class Game {
     this.safe.yaw = spot.yaw;
     this.foam.clear();
     this.spray.clear();
+    this.effects.jet.clear();
+    this.effects.wash.clear();
     this.tricks.lastYaw = null;
     for (let i = 0; i < 120; i++) this.phys.step(FIXED);
     this.syncSki();

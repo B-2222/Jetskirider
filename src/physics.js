@@ -20,7 +20,7 @@ import { clamp, smoothstep, damp, sign } from './util.js';
 const G = 9.81;
 // stand-ups: how much faster than its normal rate a rider can tuck a flip or
 // roll to get it round before a smaller jump comes down
-const TUCK = 1.7;
+const TUCK = 1.4;
 // stand-ups: extra height (in hull lengths) a flip or roll needs, because the
 // bow, stern, pole and rider swing down below the hull as it goes round
 const ROT_ALLOW = 0.22;
@@ -725,7 +725,7 @@ export class SkiPhysics {
         const shape = 0.78 + 0.44 * Math.sin(Math.PI * prog);
         const want = -aLean * Math.min(this.tuckRate(sp.flipRate, left) * shape, 0.6 + 4.5 * left);
         // spinning up the rider throws it; slowing down they untuck, quicker
-        tp = this.Iz * (want < wPitch ? 16 : K) * (want - wPitch);
+        tp = this.Iz * (want < wPitch ? 10 : 5.5) * (want - wPitch);
         this.airDriven = true;
       } else if (this.airDriven && left < 0.15) {
         // round: the rider stops it at the landing attitude

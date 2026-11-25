@@ -27,8 +27,10 @@ const open = async (name, ski) => {
 };
 const A = await open('Alex', 'rxp');
 const B = await open('Bo', 'trixx');
-await A.evaluate(() => window.game.toggleLobby('lobby-1'));
-await B.evaluate(() => window.game.toggleLobby('lobby-1'));
+// everyone joins Lobby 1 on their own shortly after connecting
+await new Promise((r) => setTimeout(r, 2000));
+console.log('auto-joined:', await A.evaluate(() => window.game.mp.lobbyId), await B.evaluate(() => window.game.mp.lobbyId));
+for (const pg of [A, B]) await pg.evaluate(() => window.game.mp.lobbyId || window.game.toggleLobby('lobby-1'));
 for (const pg of [A, B]) await pg.evaluate(() => { document.getElementById('btnRide').click(); });
 // run both "in parallel": alternate small chunks so presence flows both ways
 const step = async (secs, keysA, keysB) => {
@@ -83,6 +85,18 @@ console.log('smoothness', JSON.stringify(await B.evaluate(() => {
     const d = xs.slice(1).map((x, i) => x - xs[i]);
     return { frames: d.length, frozen: d.filter((x) => Math.abs(x) < 1e-4).length, idealStep: +(v / 60).toFixed(3), minStep: +Math.min(...d).toFixed(3), maxStep: +Math.max(...d).toFixed(3) };
   } finally { performance.now = real; }
+})));
+// A's jet is drawn on B's screen as a real stream, and standing in it gets B wet
+await step(2, ['KeyW', 'KeyE'], []);
+console.log('spray', JSON.stringify(await B.evaluate(() => {
+  const g = window.game; const r = [...g.mp.remotes.values()][0];
+  let alive = 0, idx = -1, st = r.jet;
+  for (const js of [r.jet, r.wash]) for (let i = 0; i < js.alive.length; i++) if (js.alive[i] && js.age[i] > 0.15) { alive++; if (idx < 0 || js === r.jet) { idx = i; st = js; } }
+  if (idx < 0) { let all = 0; for (let i = 0; i < r.jet.alive.length; i++) all += r.jet.alive[i]; const w = [...r.wash.alive].reduce((a, b) => a + b, 0); return { streamParcels: 0, all, wash: w, pw: r.state.pw, jo: r.state.jo, jw: r.state.jw, f: r.state.f, w: r.state.w, surf: !!g._surfAt, model: !!r.model, last: !!r.jet.last }; }
+  // stand right where A's water is
+  g.phys.px = st.px[idx]; g.phys.pz = st.pz[idx]; g.phys.py = st.py[idx] - (st === r.jet ? 0.9 : 0.5);
+  g.sprayT = 1; g.sprayHits(0.05);
+  return { streamParcels: alive, lensWet: g.wetLens.active, hint: document.getElementById('hint').textContent };
 })));
 // A leaves: B's remote disappears
 await A.evaluate(() => window.game.toggleLobby('lobby-1'));

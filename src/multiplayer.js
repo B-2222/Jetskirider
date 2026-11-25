@@ -15,6 +15,7 @@ import { skiById } from './specs.js';
 import { clamp, smoothstep } from './util.js';
 import { makeFakeRoom } from './fakeroom.js';
 import { FIREBASE_CONFIG } from './firebase-config.js';
+import { JetStream } from './jetstream.js';
 
 export const LOBBIES = [
   { id: 'lobby-1', name: 'Lobby 1' },
@@ -54,6 +55,11 @@ class Remote {
     mp.tagRoot.appendChild(this.tag);
     mp.game.scene.add(this.group);
     this.acc = 0;
+    // their jet and pump wash, the same real streams of water as your own
+    const u = mp.game.spray.uniforms;
+    this.jet = new JetStream(u);
+    this.wash = new JetStream(u, { wide: 1.7, sheath: 1.45 });
+    mp.game.scene.add(this.jet.mesh, this.wash.mesh);
   }
 
   setLook(skiId, cw) {
@@ -215,29 +221,38 @@ class Remote {
     }
     this.wasAir = air;
     this.lastVy = this.vel.y;
-    if (dist > 160 || s.w) return;
     const power = clamp(s.pw || 0, 0, 1);
-    if (power > 0.05 && !(s.f & 1)) {
-      const exit = new THREE.Vector3();
+    const surf = g._surfAt;
+    if (dist < 260 && !s.w && power > 0.03 && !(s.f & 1) && this.model && surf) {
+      const exit = this._exit || (this._exit = new THREE.Vector3());
       this.model.nozzleExit.getWorldPosition(exit);
-      const q = new THREE.Quaternion();
+      const q = this._q || (this._q = new THREE.Quaternion());
       this.model.nozzlePitch.getWorldQuaternion(q);
-      const jd = new THREE.Vector3(-1, 0, 0).applyQuaternion(q);
-      const out = air ? 1 : clamp(0.35 + jd.y * 3, 0.15, 1);
+      const jd = (this._jd || (this._jd = new THREE.Vector3())).set(-1, 0, 0).applyQuaternion(q);
       const trimK = clamp(jd.y * 3, 0, 1);
-      this.acc += 2600 * power * out * (1 + trimK) * budget * dt;
-      let n = this.acc | 0;
-      this.acc -= n;
-      n = Math.min(n, 160);
+      // how much is out in the air and how much boils up as wash: sent by
+      // their game (older versions: worked out from the nozzle)
+      const jo = Number.isFinite(s.jo) ? clamp(s.jo, 0, 1) : power * (air ? 1 : clamp(0.35 + jd.y * 3, 0.15, 1));
+      const jw = Number.isFinite(s.jw) ? clamp(s.jw, 0, 1) : air ? 0 : power * 0.6;
       const vj = this.spec.jet * (0.5 + 0.5 * power);
-      for (let i = 0; i < n; i++) {
-        const sp = 0.06 + Math.random() * Math.random() * 0.12;
-        const sv = vj * (0.62 + Math.random() * 0.5);
-        const dx = jd.x + (Math.random() - 0.5) * sp * 2;
-        const dy = jd.y * (1 + trimK * 1.15) + (Math.random() - 0.5) * sp * 1.6 + sp * 0.3;
-        const dz = jd.z + (Math.random() - 0.5) * sp * 2;
-        g.spray.emit(exit.x, Math.max(exit.y, this.pos.y - 0.25), exit.z, this.vel.x + dx * sv, this.vel.y + dy * sv, this.vel.z + dz * sv, 1.4 + Math.random() * 1.5, 0.09 + Math.random() * 0.07, 0.4 + Math.random() * 0.6, 1, 0.12, 0.9, 0.12);
-      }
+      const ly = jd.y * (1 + trimK * 1.25) + (air ? 0 : 0.08 + 0.2 * trimK) * (1 - jo);
+      const ll = Math.hypot(jd.x, ly, jd.z) || 1;
+      const wy = surf(exit.x, exit.z);
+      this.jet.feed(dt, exit.x, Math.max(exit.y, wy + 0.02), exit.z, this.vel.x, this.vel.y, this.vel.z, jd.x / ll, ly / ll, jd.z / ll, vj * (0.5 + 0.5 * jo / Math.max(power, 0.05)), jo, 0.9);
+      const hl = Math.hypot(jd.x, jd.z) || 1;
+      const up = (1.0 + 4.2 * power) * (0.4 + 0.6 * Math.min(1, speed / 12));
+      const wv = vj * 0.42;
+      const wl = Math.hypot(wv, up) || 1;
+      this.wash.feed(dt, exit.x - (jd.x / hl) * 0.25, wy + 0.04, exit.z - (jd.z / hl) * 0.25, this.vel.x * 0.55, 0, this.vel.z * 0.55,
+        ((jd.x / hl) * wv) / wl, up / wl, ((jd.z / hl) * wv) / wl, wl, jw, 1);
+    } else {
+      this.jet.last = null;
+      this.wash.last = null;
+    }
+    if (surf) {
+      const dn = budget * (g.effects.density || 1);
+      this.jet.update(dt, surf, dist < 160 ? g.foam : null, dist < 120 ? g.spray : null, dn);
+      this.wash.update(dt, surf, dist < 160 ? g.foam : null, null, dn);
     }
     // wake foam
     if (!air && speed > 2 && dist < 140) {
@@ -247,6 +262,13 @@ class Remote {
   }
 
   dispose(keepTag) {
+    if (!keepTag && this.jet) {
+      this.jet.mesh.removeFromParent();
+      this.wash.mesh.removeFromParent();
+      this.jet.dispose();
+      this.wash.dispose();
+      this.jet = this.wash = null;
+    }
     if (this.model) {
       this.group.remove(this.model.group);
       this.model.dispose();
@@ -371,9 +393,13 @@ export class Multiplayer {
           clearTimeout(giveUp);
           this.status = 'ready';
           this.changed();
+          this.autoJoin();
         }
       });
-    } else this.status = 'ready';
+    } else {
+      this.status = 'ready';
+      this.autoJoin();
+    }
     this.changed();
   }
 
@@ -403,6 +429,27 @@ export class Multiplayer {
       })
       .catch(() => {});
     return '';
+  }
+
+  // draw everyone else's jets for this frame's camera
+  buildJets(camPos, camDir) {
+    for (const r of this.remotes.values()) {
+      if (!r.jet) continue;
+      r.jet.build(camPos, camDir);
+      r.wash.build(camPos, camDir);
+    }
+  }
+
+  // Everyone starts in Lobby 1 (Lobby 2 if it is full), once, shortly after
+  // connecting; leave it and you stay out.
+  autoJoin() {
+    if (this.autoTried || this.lobbyId) return;
+    this.autoTried = true;
+    setTimeout(async () => {
+      if (this.lobbyId || this.joining || this.status !== 'ready') return;
+      const r = await this.joinLobby(LOBBIES[0].id);
+      if (r === 'full') await this.joinLobby(LOBBIES[1].id);
+    }, 1200);
   }
 
   // riders per lobby, from everyone's lobby-room presence
@@ -544,6 +591,8 @@ export class Multiplayer {
       ln: r2(p.ctrl.lean),
       li: r2(p.leanIn || 0),
       sm: r2(T.superman || 0),
+      jo: r2(g.effects.jetOut || 0),
+      jw: r2(g.effects.washAmt || 0),
       tu: r2(T.tuck || 0),
       a: T.airborne ? 1 : 0,
       w: g.wipe.on ? 1 : 0,
