@@ -47,10 +47,14 @@ function material(uniforms) {
       uniform vec3 uWater;
       uniform vec3 uSunDir;
       uniform vec3 uSunColor;
+      uniform float uRainbow;
       varying vec2 vUv;
       varying vec4 vDat;
       varying vec3 vWorld;
       varying vec3 vSide;
+      vec3 hue(float h) {
+        return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+      }
       void main() {
         float x = vUv.x * 2.0 - 1.0;
         float age = vDat.x;
@@ -72,7 +76,7 @@ function material(uniforms) {
         float a = prof * mix(1.0, lace, brk) * vDat.y;
         a *= mix(1.0, 0.55 + 0.45 * n3, brk); // thinning to mist
         // water right by the lens is a blur you never see as a sheet
-        a *= smoothstep(1.5, 7.0, length(cameraPosition - vWorld));
+        a *= smoothstep(2.5, 10.0, length(cameraPosition - vWorld));
         if (a < 0.01) discard;
         // lighting: treat the ribbon as a round column of water
         vec3 toCam = normalize(cameraPosition - vWorld);
@@ -86,6 +90,8 @@ function material(uniforms) {
         // backlit by the sun it glows
         float glow = pow(max(dot(-toCam, uSunDir), 0.0), 6.0) * smoothstep(-0.05, 0.15, uSunDir.y);
         col += uSunColor * glow * (0.7 + 0.8 * brk);
+        // admin extra: rainbow spray, the colours running along the stream
+        col = mix(col, hue(fract(vUv.y * 0.9 + x * 0.08)) * (0.55 + 0.6 * lit), uRainbow * 0.7);
         gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -270,7 +276,7 @@ export class JetStream {
       let ok = alive[i];
       // water behind (or right at) the camera is not drawn: a ribbon crossing
       // the lens would smear across the whole screen
-      if (ok && camDir) ok = (px[i] - camPos.x) * camDir.x + (py[i] - camPos.y) * camDir.y + (pz[i] - camPos.z) * camDir.z > 1.2;
+      if (ok && camDir) ok = (px[i] - camPos.x) * camDir.x + (py[i] - camPos.y) * camDir.y + (pz[i] - camPos.z) * camDir.z > 2.5;
       order[m++] = ok ? i : -1;
     }
     let psx = 0, psy = 0, psz = 0, havePrev = false;

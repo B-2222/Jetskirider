@@ -31,7 +31,7 @@ Then go to `http://localhost:8000`.
 | `R` | Reset to open water |
 | `G` | Go to the wave zone (and back) |
 | `I` | Show / hide the FPS counter |
-| `T` / `V` | Change light / water |
+| `T` / `V` | Admin only: move the clock on / change the water, for everyone |
 | `M` / `Esc` | Sound / garage |
 
 On the sit-down skis there is one trick in the air, the Superman: off a wave jump press `X` right after take-off and the rider hangs on to the bars with their legs kicked out behind the ski. Let go before you land or you bail. To spin, throw the ski into a hard turn right at the lip and the rotation carries through the air (a Superman on top makes it a SUPERMAN + 360). Otherwise `Space` / `Shift` only shift the rider's weight to nudge the nose.
@@ -62,6 +62,12 @@ The Freestyle and Race stand-ups ride differently: no trim, a light hull that yo
 - Off a jump: `Space` backflip, steer to spin. Let go once the flip is under way and the rider lands it.
 - Space starts the flip as soon as you are in the air, whatever the jump. On a smaller one the rider tucks tighter to get round, but too small and you will not make it. Hold `Space` up the face and through the lip for the biggest flips. The Freestyle rotates faster and can double off the biggest sets.
 - Flat-water backflip: at low speed hold `Shift` without steering to sink the nose, then hit `Space`. The nose pops out of the water; keep holding `Space` to flip.
+
+## Day, night and the admin
+
+A day lasts 20 minutes of the shared clock: sunrise, a long day, golden hour, sunset, then a short moonlit night with stars (about two minutes) before dawn. Everyone online sees the same time of day and the same water.
+
+Only the admin changes them. Enter the admin code in the ADMIN section of the garage (the code is not stored in this repository; whoever runs the game keeps it). The admin can set the time, freeze it, let it run or run fast, change the water, and switch on extras for everyone: moon gravity in the air, turbo for all, mega spray, rainbow spray, every set huge, call a huge set right now, and send everyone to the wave zone. The admin's game signs every change with a key made from the code and every other game checks the signature, so nobody else can fake it. Riders pass the latest settings on to each other, so they hold after the admin leaves.
 
 ## Online
 

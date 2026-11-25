@@ -14,6 +14,9 @@ import { Breakers } from './breakers.js';
 import { SkiEffects } from './effects.js';
 import { JetStream } from './jetstream.js';
 import { WetLens } from './wetlens.js';
+import { todAt, DAY_LEN, PRESET_PHASE, clockText, hourOf, phaseOfHour } from './daycycle.js';
+import { unlock, FUN } from './world.js';
+import { SURF } from './surf.js';
 
 // names come from other players: keep them out of anything read as HTML
 const plain = (s) => String(s || '').replace(/[<>&"'`]/g, '');
@@ -103,7 +106,7 @@ class Game {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.15, 12000);
+    this.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.15, 20000);
     // bloom on the brightest highlights (sun glints, backlit spray), a light
     // grade and a vignette. Desktop only; it switches itself off if the frame
     // rate struggles (?bloom=0 turns it off).
@@ -148,7 +151,7 @@ class Game {
     this.scene.add(this.sun, this.sun.target);
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x224455, 0.5);
     this.scene.add(this.hemi);
-    this.scene.fog = new THREE.FogExp2(0xffffff, 1 / 3600);
+    this.scene.fog = new THREE.FogExp2(0xffffff, 1 / 7000); // a long way before the haze closes in
 
     this.terrainMesh = buildTerrainMesh(this.terrain);
     this.scene.add(this.terrainMesh);
@@ -202,8 +205,11 @@ class Game {
     // --- state ---------------------------------------------------------------
     this.state = 'menu';
     this.hasRidden = false;
-    this.seaIndex = clamp(parseInt(params.get('sea') || store.get('sea', '1'), 10) || 0, 0, SEA_STATES.length - 1);
-    this.timeIndex = clamp(parseInt(params.get('tod') || store.get('tod', '0'), 10) || 0, 0, TIMES.length - 1);
+    // The time of day and the water belong to the shared world (the admin
+    // sets them, the same for everyone); ?sea= and ?tod= pin them for testing.
+    this.seaFixed = params.get('sea') !== null;
+    this.seaIndex = this.seaFixed ? clamp(parseInt(params.get('sea'), 10) || 0, 0, SEA_STATES.length - 1) : this.mp.world.sea;
+    this.fixedPhase = params.get('tod') !== null ? PRESET_PHASE[TIMES[clamp(parseInt(params.get('tod'), 10) || 0, 0, TIMES.length - 1)].id] : null;
     this.camMode = 0;
     let fpsOn = true;
     try {
@@ -225,7 +231,8 @@ class Game {
     this._e = new THREE.Euler();
 
     this.applySea(true);
-    this.applyTime();
+    this.applyTime(true);
+    this.mp.onWorld = (w) => this.applyWorld(w);
     // one wave clock for everyone, so friends in a lobby see the same surf
     // (start a second early: the settle below runs the clock forward)
     this.phys.time = this.mp.worldTime() - 1;
@@ -335,8 +342,20 @@ class Game {
     store.set('sea', this.seaIndex);
   }
 
-  applyTime() {
-    const tod = TIMES[this.timeIndex];
+  // where we are in the day: the admin's clock if they set one, else the
+  // shared world clock (the same for everyone online)
+  dayPhase() {
+    if (this.fixedPhase !== null) return this.fixedPhase;
+    const d = this.mp.world.day;
+    const now = this.mp.worldClock();
+    if (d) return (((d.p0 + ((now - d.t0) * d.speed) / DAY_LEN) % 1) + 1) % 1;
+    return (((now / DAY_LEN + 0.3) % 1) + 1) % 1;
+  }
+
+  // Light the world for the time of day. Cheap enough to run every frame;
+  // the sky reflections are re-baked only every few seconds.
+  applyTime(force = false) {
+    const tod = todAt(this.dayPhase(), this._tod || (this._tod = {}));
     this.sky.setTime(tod);
     this.ocean.setTime(tod);
     this.spray.setLight(tod);
@@ -351,12 +370,152 @@ class Game {
     this.hemi.groundColor.setRGB(tod.shallow[0] * 0.5 + 0.05, tod.shallow[1] * 0.5 + 0.05, tod.shallow[2] * 0.5 + 0.05);
     this.hemi.intensity = 0.9 * tod.ambient;
     this.scene.fog.color.setRGB(tod.horizon[0], tod.horizon[1], tod.horizon[2]);
-    if (this.envTex) this.envTex.dispose();
-    this.envTex = this.sky.makeEnvironment(this.renderer);
-    this.scene.environment = this.envTex;
-    this.applyEnv();
-    if (this.mp) for (const r of this.mp.remotes.values()) r.applyEnv();
-    store.set('tod', this.timeIndex);
+    const now = performance.now();
+    const moved = Math.abs(tod.phase - (this.envPhase ?? -1));
+    if (force || !this.envTex || (now - (this.envT || 0) > 2500 && Math.min(moved, 1 - moved) > 0.002)) {
+      this.envT = now;
+      this.envPhase = tod.phase;
+      if (this.envTex) this.envTex.dispose();
+      this.envTex = this.sky.makeEnvironment(this.renderer);
+      this.scene.environment = this.envTex;
+      this.applyEnv();
+      if (this.mp) for (const r of this.mp.remotes.values()) r.applyEnv();
+    }
+    return tod;
+  }
+
+  // the shared world changed (or arrived): water, fun extras, events
+  applyWorld(w) {
+    if (!this.seaFixed && w.sea !== this.seaIndex) {
+      this.seaIndex = w.sea;
+      this.applySea();
+    }
+    const f = w.fun;
+    this.phys.fun.lowGrav = f.lowGrav ? 0.62 : 0;
+    this.phys.fun.turbo = f.turbo ? 1.45 : 1;
+    this.effects.mega = f.mega ? 1.7 : 1;
+    this.spray.uniforms.uRainbow.value = f.rainbow ? 1 : 0;
+    this.waves.surf.allHuge = !!f.allHuge;
+    this.waves.surf.forcedSet = w.huge;
+    if (w.summon && w.summon !== this.lastSummon) {
+      const fresh = this.mp.worldClock() * 1000 - w.summon < 60000;
+      if (this.lastSummon !== undefined && fresh && this.state === 'ride' && !this.wipe.on) {
+        this.teleport('zone');
+        this.showHint('The admin called everyone to the wave zone!', 3);
+      }
+      this.lastSummon = w.summon;
+    }
+    if (this.lastSummon === undefined) this.lastSummon = w.summon;
+    this.refreshWorldUi();
+  }
+
+  refreshWorldUi() {
+    const tod = this._tod;
+    $('worldSea').textContent = SEA_STATES[this.seaIndex].name;
+    if (tod) $('worldTime').textContent = clockText(tod.phase) + ' · ' + tod.name + (this.mp.world.day && this.mp.world.day.speed === 0 ? ' (frozen)' : '');
+    if (this.mp.adminKey) {
+      const el = $('admTime');
+      if (document.activeElement !== el && tod) el.value = hourOf(tod.phase).toFixed(2);
+      $('admTimeLbl').textContent = tod ? clockText(tod.phase) : '';
+      const d = this.mp.world.day;
+      const mode = !d ? 'auto' : String(d.speed === 0 ? 0 : d.speed <= 1 ? 1 : 12);
+      for (const b of $('admClock').children) b.setAttribute('aria-pressed', b.dataset.s === mode ? 'true' : 'false');
+      for (const b of $('admFun').children) b.setAttribute('aria-pressed', this.mp.world.fun[b.dataset.f] ? 'true' : 'false');
+      [...$('admSea').children].forEach((b, i) => b.setAttribute('aria-pressed', i === this.seaIndex ? 'true' : 'false'));
+    }
+  }
+
+  // ------------------------------------------------------------- admin
+  setupAdmin(seg) {
+    const mp = this.mp;
+    const go = async (code, quiet) => {
+      const key = await unlock(code).catch(() => null);
+      if (!key) {
+        if (!quiet) {
+          const el = $('adminCode');
+          el.classList.remove('admin-bad');
+          void el.offsetWidth;
+          el.classList.add('admin-bad');
+          this.showHint('That is not the admin code.', 2);
+        }
+        return;
+      }
+      mp.adminKey = key;
+      try {
+        localStorage.setItem('jetski-admin', code);
+      } catch {
+        /* ignore */
+      }
+      $('adminLock').hidden = true;
+      $('adminPanel').hidden = false;
+      if (!quiet) this.showHint('Admin unlocked.', 1.6);
+      this.refreshWorldUi();
+    };
+    $('adminGo').addEventListener('click', () => go($('adminCode').value));
+    $('adminCode').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') go($('adminCode').value);
+    });
+    try {
+      const saved = localStorage.getItem('jetski-admin');
+      if (saved) go(saved, true);
+    } catch {
+      /* ignore */
+    }
+    const say = (t) => {
+      $('admStatus').textContent = (mp.room ? 'Sent to everyone online: ' : 'Offline, so just for you: ') + t;
+    };
+    // time of day
+    $('admTime').addEventListener('input', (e) => {
+      const d = mp.world.day;
+      mp.setWorld({ day: { t0: mp.worldClock(), p0: phaseOfHour(parseFloat(e.target.value)), speed: d ? d.speed : 1 } });
+      say('time set to ' + clockText(phaseOfHour(parseFloat(e.target.value))) + '.');
+    });
+    for (const b of $('admClock').children) {
+      b.addEventListener('click', () => {
+        const s = b.dataset.s;
+        if (s === 'auto') mp.setWorld({ day: null });
+        else mp.setWorld({ day: { t0: mp.worldClock(), p0: this.dayPhase(), speed: parseFloat(s) } });
+        say(s === 'auto' ? 'the normal day and night cycle.' : s === '0' ? 'time frozen.' : s === '1' ? 'time running.' : 'time running fast.');
+      });
+    }
+    // water
+    seg($('admSea'), SEA_STATES, () => this.seaIndex, (i) => {
+      mp.setWorld({ sea: i });
+      say('water ' + SEA_STATES[i].name.toLowerCase() + '.');
+    });
+    // fun extras
+    for (const f of FUN) {
+      const b = document.createElement('button');
+      b.textContent = f.name;
+      b.dataset.f = f.id;
+      b.addEventListener('click', () => {
+        const on = !mp.world.fun[f.id];
+        mp.setWorld({ fun: { [f.id]: on } });
+        say(f.name.toLowerCase() + (on ? ' on.' : ' off.'));
+      });
+      $('admFun').appendChild(b);
+    }
+    // events
+    $('admHuge').addEventListener('click', () => {
+      // the next set that has not got close to breaking yet
+      const t = this.phys.time;
+      const cur = Math.floor(t / SURF.period);
+      const sc = SURF.spawnS + SURF.c * (t - cur * SURF.period);
+      const set = sc < -180 ? cur : cur + 1;
+      const eta = Math.round(set * SURF.period - t + 44);
+      mp.setWorld({ huge: set });
+      say('a huge set is on its way (about ' + Math.max(10, eta) + ' s).');
+    });
+    $('admSummon').addEventListener('click', () => {
+      mp.setWorld({ summon: Math.round(mp.worldClock() * 1000) });
+      if (this.state === 'ride') this.teleport('zone');
+      say('everyone is off to the wave zone.');
+    });
+    $('admReset').addEventListener('click', () => {
+      mp.setWorld({ sea: 1, day: null, fun: Object.fromEntries(FUN.map((f) => [f.id, false])), huge: null });
+      say('world back to normal.');
+    });
   }
 
   setupPost(on) {
@@ -416,19 +575,12 @@ class Game {
       });
       el._get = get;
     };
-    seg($('segSea'), SEA_STATES, () => this.seaIndex, (i) => {
-      this.seaIndex = i;
-      this.applySea();
-    });
     this.spotIndex = 0;
     seg($('segSpot'), [{ name: 'Lagoon' }, { name: 'Wave zone' }], () => this.spotIndex, (i) => {
       this.spotIndex = i;
       this.teleport(i === 1 ? 'zone' : 'lagoon');
     });
-    seg($('segTime'), TIMES, () => this.timeIndex, (i) => {
-      this.timeIndex = i;
-      this.applyTime();
-    });
+    this.setupAdmin(seg);
     const bars = $('vtsBars');
     for (let i = 0; i < 9; i++) {
       const b = document.createElement('i');
@@ -511,7 +663,7 @@ class Game {
     });
     $('mColorName').textContent = s.colorways[cwI].name;
     if (this.spotIndex !== undefined) this.spotIndex = this.waves.zoneMask(this.phys.px, this.phys.pz) > 0.05 || Math.hypot(this.phys.px - ZONE_IN.x, this.phys.pz - ZONE_IN.z) < 200 ? 1 : 0;
-    for (const id of ['segSpot', 'segSea', 'segTime']) {
+    for (const id of ['segSpot', 'admSea']) {
       const el = $(id);
       [...el.children].forEach((b, i) => b.setAttribute('aria-pressed', i === el._get() ? 'true' : 'false'));
     }
@@ -1121,17 +1273,19 @@ class Game {
     }
     if (inp.was('Enter') && this.state === 'menu') this.ride();
     if (inp.was('KeyM')) this.toggleMute();
-    if (inp.was('KeyT')) {
-      this.timeIndex = (this.timeIndex + 1) % TIMES.length;
-      this.applyTime();
-      this.showHint(TIMES[this.timeIndex].name, 1.6);
-      this.refreshMenu();
-    }
-    if (inp.was('KeyV')) {
-      this.seaIndex = (this.seaIndex + 1) % SEA_STATES.length;
-      this.applySea();
-      this.showHint('Water: ' + SEA_STATES[this.seaIndex].name, 1.6);
-      this.refreshMenu();
+    // time and water belong to the shared world: only the admin moves them
+    if (inp.was('KeyT') || inp.was('KeyV')) {
+      if (!this.mp.adminKey) this.showHint('The time and the water are the same for everyone. The admin sets them.', 2.2);
+      else if (inp.was('KeyT')) {
+        const p = phaseOfHour(hourOf(this.dayPhase()) + 1.5);
+        const d = this.mp.world.day;
+        this.mp.setWorld({ day: { t0: this.mp.worldClock(), p0: p, speed: d ? d.speed : 1 } });
+        this.showHint('Time: ' + clockText(p), 1.4);
+      } else {
+        const i = (this.seaIndex + 1) % SEA_STATES.length;
+        this.mp.setWorld({ sea: i });
+        this.showHint('Water: ' + SEA_STATES[i].name, 1.4);
+      }
     }
     if (inp.was('KeyH')) $('help').hidden = !$('help').hidden;
     if (inp.was('KeyI')) this.setFps(!this.showFps);
@@ -1403,7 +1557,7 @@ class Game {
     this.effects.jet.update(dt, surfAt, this.foam, this.spray, this.effects.density);
     this.effects.wash.update(dt, surfAt, this.foam, null, this.effects.density);
     // breaking surf: lips, barrels, spray and whitewater foam (only nearby)
-    if (Math.hypot(p.px - WAVE_ZONE.x, p.pz - WAVE_ZONE.z) < 1100) {
+    if (Math.hypot(p.px - WAVE_ZONE.x, p.pz - WAVE_ZONE.z) < 2400) {
       this.breakers.update(dt, time, p, this.effects.density);
       if (this.breakers.lipHit > 0.06 && this.state === 'ride' && !this.wipe.on) this.lipHit(dt);
     } else {
@@ -1442,6 +1596,12 @@ class Game {
     // --- render state ------------------------------------------------------
     this.sky.update(dt);
     this.updateCamera(dt);
+    this.applyTime();
+    this.worldUiT = (this.worldUiT || 0) - dt;
+    if (this.worldUiT <= 0 && this.state === 'menu') {
+      this.worldUiT = 0.5;
+      this.refreshWorldUi();
+    }
     const sd = this.sky.sunDir;
     this.sun.position.set(p.px + sd.x * 40, p.py + sd.y * 40, p.pz + sd.z * 40);
     this.sun.target.position.set(p.px, p.py, p.pz);

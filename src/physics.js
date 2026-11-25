@@ -86,6 +86,8 @@ export class SkiPhysics {
     this.airOkS = false; // stand-up: this flight is long enough to stretch out
     this.airOkF = false; // stand-up: ... and long enough to flip or roll
     this.airDriven = false; // stand-up: the rider threw a rotation this flight
+    // admin fun extras: lighter gravity in the air, more pump for everyone
+    this.fun = { lowGrav: 0, turbo: 1 };
     this.wobble = 1; // stand-up: which way, and how much, this flip drifts off square
     this.roll0 = 0;
     this.airLeft = 0; // predicted time to touchdown, s
@@ -465,11 +467,13 @@ export class SkiPhysics {
         (-fz * 0.92 + uz * 0.28 - rz * sd * 0.6) * tr * lim);
       thrust = tr;
     } else {
-      const fall = clamp(1 - 0.78 * Math.pow(Math.max(ucm, 0) / this.vFree, 2), 0.1, 1) * smoothstep(sp.top * 1.07, sp.top * 0.97, ucm);
+      const tb = this.fun.turbo;
+      const top = sp.top * Math.sqrt(tb);
+      const fall = clamp(1 - 0.78 * Math.pow(Math.max(ucm, 0) / (this.vFree * Math.sqrt(tb)), 2), 0.1, 1) * smoothstep(top * 1.07, top * 0.97, ucm);
       // Net forward thrust falls away with boat speed, but the sideways and
       // vertical components come from deflecting the whole jet (gross
       // momentum flux), so steering and trim stay powerful at speed.
-      const gross = sp.thrust * power * this.pumpLoad;
+      const gross = sp.thrust * power * this.pumpLoad * tb;
       thrust = gross * fall;
       const a = -jl.x * thrust, b = -jl.y * gross * 0.85, d = -jl.z * gross * 0.8;
       addForce(nx, ny, nz, fx * a + ux * b, fy * a + uy * b, fz * a + uz * b);
@@ -542,6 +546,7 @@ export class SkiPhysics {
     // --- rider weight -------------------------------------------------------
     // lean > 0 = weight forward (nose down), lean < 0 = pull back (nose up)
     const air = wet < 0.02 && groundN < 0.02;
+    if (air && this.fun.lowGrav) Fy += m * G * this.fun.lowGrav; // moon jumps
     // Is there time left in this flight for a trick? The sea is a known
     // function of time, so follow the ski's arc forward and find where it
     // meets the water (a wave rising to meet it, or the back of one falling

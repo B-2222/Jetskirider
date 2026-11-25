@@ -88,6 +88,7 @@ console.log('smoothness', JSON.stringify(await B.evaluate(() => {
 })));
 // A's jet is drawn on B's screen as a real stream, and standing in it gets B wet
 await step(2, ['KeyW', 'KeyE'], []);
+for (let i = 0; i < 40 && !(await B.evaluate(() => window.game.mp.remotes.size > 0)); i++) await step(0.3, ['KeyW', 'KeyE'], []);
 console.log('spray', JSON.stringify(await B.evaluate(() => {
   const g = window.game; const r = [...g.mp.remotes.values()][0];
   let alive = 0, idx = -1, st = r.jet;
@@ -98,6 +99,20 @@ console.log('spray', JSON.stringify(await B.evaluate(() => {
   g.sprayT = 1; g.sprayHits(0.05);
   return { streamParcels: alive, lensWet: g.wetLens.active, hint: document.getElementById('hint').textContent };
 })));
+// Admin (needs ADMIN_CODE in the environment; the code is never stored here):
+// A's world change reaches B, and a forged one from B is ignored by A.
+if (process.env.ADMIN_CODE) {
+  const ok = await A.evaluate(async (code) => {
+    const { unlock } = await import('/src/world.js');
+    window.game.mp.adminKey = await unlock(code);
+    return !!window.game.mp.adminKey && (await window.game.mp.setWorld({ sea: 3, fun: { turbo: true } }));
+  }, process.env.ADMIN_CODE);
+  for (let i = 0; i < 20 && (await B.evaluate(() => window.game.mp.world.sea)) !== 3; i++) await step(0.3, [], []);
+  console.log('admin', JSON.stringify({ set: ok, B: await B.evaluate(() => ({ sea: window.game.seaIndex, turbo: window.game.phys.fun.turbo, water: document.getElementById('worldSea').textContent })) }));
+  await B.evaluate(() => window.game.mp.room.presence({ ws: { j: JSON.stringify({ v: Date.now() * 2, sea: 0, fun: { lowGrav: true } }), g: 'A'.repeat(86) } }));
+  await step(1, [], []);
+  console.log('forged', JSON.stringify(await A.evaluate(() => ({ sea: window.game.seaIndex, lowGrav: window.game.phys.fun.lowGrav }))));
+}
 // A leaves: B's remote disappears
 await A.evaluate(() => window.game.toggleLobby('lobby-1'));
 await step(0.5, [], []);
@@ -105,9 +120,10 @@ console.log('after A leaves, B remotes:', await B.evaluate(() => window.game.mp.
 // A comes back, then closes the tab outright: B must lose them
 await A.evaluate(() => window.game.toggleLobby('lobby-1'));
 for (let i = 0; i < 40 && !(await B.evaluate(() => window.game.mp.remotes.size > 0)); i++) await step(0.3, [], []);
-console.log('A back, B remotes:', await B.evaluate(() => window.game.mp.remotes.size));
+console.log('A back, B remotes:', await B.evaluate(() => window.game.mp.remotes.size), JSON.stringify(await A.evaluate(() => ({ lobby: window.game.mp.lobbyId, status: window.game.mp.status }))));
 await A.close();
 for (let i = 0; i < 40 && (await B.evaluate(() => window.game.mp.remotes.size > 0)); i++) await step(0.3, [], []);
+if (process.env.ADMIN_CODE) console.log('B keeps the world after the admin left:', await B.evaluate(() => window.game.mp.world.sea));
 console.log('after A closes the tab, B remotes:', await B.evaluate(() => window.game.mp.remotes.size), 'counts', JSON.stringify(await B.evaluate(() => window.game.mp.counts())));
 await browser.close();
 srv.close();

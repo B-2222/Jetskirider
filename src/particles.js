@@ -64,6 +64,7 @@ export class Spray {
       uSunDir: { value: new THREE.Vector3(0, 1, 0) },
       uSunColor: { value: new THREE.Color(1, 1, 1) },
       uWater: { value: new THREE.Color(0.35, 0.72, 0.7) },
+      uRainbow: { value: 0 }, // admin extra: rainbow spray
     };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -105,6 +106,7 @@ export class Spray {
         uniform vec3 uShade;
         uniform vec3 uSunColor;
         uniform vec3 uWater;
+        uniform float uRainbow;
         varying vec2 vUv;
         varying float vAlpha;
         varying float vSeed;
@@ -138,6 +140,8 @@ export class Spray {
           // backlit by the sun: the spray glows warm and a little brighter
           col += uSunColor * vGlow * (0.9 + 0.8 * (1.0 - d));
           a *= 1.0 + vGlow * 0.35;
+          vec3 rb = clamp(abs(mod(vSeed * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+          col = mix(col, rb * (0.5 + 0.6 * l), uRainbow * 0.7);
           gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
           #include <tonemapping_fragment>
           #include <colorspace_fragment>

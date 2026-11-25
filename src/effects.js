@@ -21,6 +21,7 @@ export class SkiEffects {
     // the jet itself and the pump wash: set by the game (JetStream)
     this.jet = null;
     this.wash = null;
+    this.mega = 1; // admin extra: mega spray
     this.jetOut = 0; // how much jet is out in the air, and how much wash (shared online)
     this.washAmt = 0;
   }
@@ -68,11 +69,12 @@ export class SkiEffects {
         const kick = (1 - e) * Math.exp(-d / 0.12) * (0.08 + 0.2 * trimK);
         const ly = jd.y * (1 + trimK * 1.25) + kick;
         const ll = Math.hypot(jd.x, ly, jd.z) || 1;
-        this.jet.feed(dt, nx, ny, nz, nv.x, nv.y, nv.z, jd.x / ll, ly / ll, jd.z / ll, vjet, flow * out, 0.8 + 0.5 * (1 - e) - trimK * 0.15);
+        const mg = this.mega;
+        this.jet.feed(dt, nx, ny, nz, nv.x, nv.y, nv.z, jd.x / ll, ly / ll, jd.z / ll, vjet * (1 + 0.2 * (mg - 1)), Math.min(1, flow * out * mg), (0.8 + 0.5 * (1 - e) - trimK * 0.15) * Math.sqrt(mg));
         this.jetOut = flow * out;
       }
       // the droplets are now only the fringe of the stream
-      n = Math.round(n * 0.12);
+      n = Math.round(n * 0.12 * this.mega);
       for (let i = 0; i < n; i++) {
         const sp = spread * (0.3 + rnd() * rnd() * 2.2);
         const dx = jd.x + rs() * sp, dy = jd.y * boost + rs() * sp * 0.8 + sp * 0.25, dz = jd.z + rs() * sp;
@@ -133,7 +135,7 @@ export class SkiEffects {
         const up = (1.0 + 4.2 * flow) * (0.4 + 0.6 * Math.min(1, T.speed / 12));
         const wv = vjet * 0.42;
         const wl = Math.hypot(wv, up) || 1;
-        this.washAmt = flow * shallow * clamp(flow * 1.6, 0, 1) * 0.85;
+        this.washAmt = Math.min(1, flow * shallow * clamp(flow * 1.6, 0, 1) * 0.85 * this.mega);
         this.wash.feed(dt, nx - (hx / hl) * 0.25, T.waterAtNozzle + 0.04, nz - (hz / hl) * 0.25, nv.x * 0.55, 0, nv.z * 0.55,
           ((hx / hl) * wv) / wl, up / wl, ((hz / hl) * wv) / wl, wl, this.washAmt, 1);
       }

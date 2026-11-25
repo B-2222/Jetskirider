@@ -67,6 +67,8 @@ export class Surf {
   // minutes) one is huge and two are bigger, in no fixed order, so a big one
   // is never far away but you cannot quite tell when.
   setScale(set) {
+    // admin extras: every set huge, or this one set huge right now
+    if (this.allHuge || set === this.forcedSet) return 1.8;
     const block = Math.floor(set / 6);
     const i = set - block * 6;
     const huge = Math.floor(hash(block, 7) * 6);

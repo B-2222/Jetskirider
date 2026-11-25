@@ -128,6 +128,7 @@ export class Sky {
   constructor(noiseTex) {
     this.uniforms = makeSkyUniforms(noiseTex);
     this.uniforms.uSunDisc = { value: 1 };
+    this.uniforms.uStars = { value: 0 };
     this.sunDir = this.uniforms.uSunDir.value;
     const mat = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -146,6 +147,7 @@ export class Sky {
       fragmentShader: /* glsl */ `
         ${SKY_GLSL}
         uniform float uSunDisc;
+        uniform float uStars;
         varying vec3 vDir;
         void main() {
           vec3 d = normalize(vDir);
@@ -154,6 +156,15 @@ export class Sky {
           float disc = smoothstep(0.99982, 0.99993, mu);
           vec4 cl = skyClouds(d);
           c += uSunColor * disc * 14.0 * uSunDisc * (1.0 - cl.a);
+          // stars at night, twinkling, fading out toward the horizon haze
+          if (uStars > 0.001 && d.y > 0.0) {
+            vec3 sd = d * 260.0;
+            vec3 cell = floor(sd);
+            float h = fract(sin(dot(cell, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+            float st = step(0.9965, h) * smoothstep(0.32, 0.0, length(fract(sd) - 0.5));
+            float tw = 0.65 + 0.35 * sin(uCloudTime * (2.0 + h * 9.0) + h * 40.0);
+            c += vec3(0.85, 0.9, 1.0) * st * tw * uStars * smoothstep(0.0, 0.15, d.y) * 1.6 * (1.0 - cl.a);
+          }
           c = mix(c, cl.rgb, cl.a);
           if (d.y < 0.0) {
             // below the horizon: sea haze colour so env maps get a sensible floor
@@ -182,6 +193,7 @@ export class Sky {
     u.uGlow.value.setRGB(...tod.glow);
     u.uCloudLit.value.setRGB(...tod.cloudLit);
     u.uCloudShade.value.setRGB(...tod.cloudShade);
+    u.uStars.value = tod.stars || 0;
   }
 
   update(dt) {

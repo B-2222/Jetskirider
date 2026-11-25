@@ -216,7 +216,7 @@ function makeOceanGeometry() {
   const radii = [0];
   let r = 0;
   let step = 0.3;
-  while (r < 6000) {
+  while (r < 9500) {
     r += step;
     radii.push(r);
     step *= 1.042;
@@ -286,7 +286,7 @@ export class Ocean {
       uSkiPos: { value: new THREE.Vector3() },
       uSkiFwd: { value: new THREE.Vector2(1, 0) },
       uSkiDim: { value: new THREE.Vector2(1.7, 0.75) },
-      uFogDist: { value: 3400 },
+      uFogDist: { value: 6500 },
     };
     Sky.link(u, sky.uniforms);
     this.uniforms = u;

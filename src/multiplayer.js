@@ -16,6 +16,8 @@ import { clamp, smoothstep } from './util.js';
 import { makeFakeRoom } from './fakeroom.js';
 import { FIREBASE_CONFIG } from './firebase-config.js';
 import { JetStream } from './jetstream.js';
+import { DEFAULT_WORLD, cleanWorld, sign, verify } from './world.js';
+import { SEA_STATES } from './waves.js';
 
 export const LOBBIES = [
   { id: 'lobby-1', name: 'Lobby 1' },
@@ -169,7 +171,7 @@ class Remote {
     }
     const s = this.state;
     const dist = this.pos.distanceTo(camPos);
-    const far = dist > 900;
+    const far = dist > 1800;
     this.group.visible = !far;
     this.group.position.copy(this.pos);
     this.group.quaternion.copy(this.quat);
@@ -311,6 +313,11 @@ export class Multiplayer {
     this.lastTrick = null;
     this.names = new Map();
     this.onChange = null;
+    // the shared world (time, water, fun extras): see world.js
+    this.world = cleanWorld(DEFAULT_WORLD, SEA_STATES.length);
+    this.worldPack = null; // { j: settings JSON, g: admin signature }
+    this.onWorld = null;
+    this.adminKey = null;
     this.tagRoot = document.getElementById('tags');
     this.feedEl = document.getElementById('mpFeed');
     let nick = '';
@@ -369,7 +376,10 @@ export class Multiplayer {
     }
     if (!this.nick) this.nick = 'Rider ' + (100 + Math.floor(Math.random() * 900));
     this.room.onPeers(
-      () => this.changed(),
+      () => {
+        this.readWorld();
+        this.changed();
+      },
       () => {
         this.status = 'offline';
         this.offlineWhy = 'failed';
@@ -545,6 +555,61 @@ export class Multiplayer {
       this.clockOffset = est;
       this.clockSet = true;
     } else this.clockOffset += (est - this.clockOffset) * 0.08;
+  }
+
+  // the shared clock in seconds (does not wrap)
+  worldClock() {
+    return (Date.now() + this.clockOffset) / 1000;
+  }
+
+  // Adopt the newest admin-signed world settings anyone online is carrying.
+  readWorld() {
+    if (!this.room) return;
+    let best = null;
+    let bestV = this.world.v;
+    for (const p of this.room.peers()) {
+      const w = p.presence && p.presence.ws;
+      if (!w || typeof w.j !== 'string' || typeof w.g !== 'string' || w.j.length > 900) continue;
+      let o;
+      try {
+        o = JSON.parse(w.j);
+      } catch {
+        continue;
+      }
+      if (o && Number.isFinite(o.v) && o.v > bestV) {
+        best = { pack: { j: w.j, g: w.g }, o };
+        bestV = o.v;
+      }
+    }
+    if (!best || this.checking === best.pack.g) return;
+    this.checking = best.pack.g;
+    verify(best.pack.j, best.pack.g).then((ok) => {
+      this.checking = null;
+      if (ok && best.o.v > this.world.v) this.adoptWorld(best.pack, best.o);
+    });
+  }
+
+  adoptWorld(pack, o) {
+    this.world = cleanWorld(o, SEA_STATES.length);
+    this.worldPack = pack;
+    // pass it on, so it holds after the admin has gone
+    if (this.room) this.room.presence({ ws: pack }).catch(() => {});
+    if (this.onWorld) this.onWorld(this.world);
+  }
+
+  // Admin only: change the world for everyone (and for you, offline).
+  async setWorld(changes) {
+    if (!this.adminKey) return false;
+    // build on any change still being signed, so quick clicks all count
+    const base = this.nextWorld || this.world;
+    const w = { ...base, ...changes, fun: { ...base.fun, ...(changes.fun || {}) } };
+    w.v = Math.max(base.v + 1, Math.round(this.worldClock() * 1000));
+    this.nextWorld = w;
+    const j = JSON.stringify(w);
+    const g = await sign(this.adminKey, j);
+    if (w.v > this.world.v) this.adoptWorld({ j, g }, w);
+    if (this.nextWorld === w) this.nextWorld = null;
+    return true;
   }
 
   worldTime() {

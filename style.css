@@ -227,3 +227,17 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 .tag b { font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: 0.04em; background: rgba(5, 20, 29, 0.6); padding: 1px 7px; border-radius: 3px; }
 .tag span { font-size: 11px; color: var(--mist); }
 @media (max-width: 720px) { .mp-panel { width: 170px; } }
+
+.world-val { font-family: var(--display); font-weight: 700; letter-spacing: 0.06em; font-size: 16px; }
+.admin #adminLock input { width: 150px; }
+.admin-note { margin: 2px 0 6px; font-size: 13px; color: var(--accent); }
+.admin input[type='range'] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+.seg.wrap { flex-wrap: wrap; }
+.admin-bad { animation: admShake 0.35s; }
+@keyframes admShake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.admin { display: grid; gap: 8px; }
+.admin #adminPanel { display: grid; gap: 8px; }
+.admin #adminPanel[hidden] { display: none; }
+.admin input[type='password'] { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; color: var(--foam); font: inherit; padding: 6px 10px; }
+.admin input[type='password']:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+#adminGo { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px 5px; font-size: 13px; }
