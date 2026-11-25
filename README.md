@@ -31,6 +31,7 @@ Then go to `http://localhost:8000`.
 | `R` | Reset to open water |
 | `G` | Go to the wave zone (and back) |
 | `I` | Show / hide the FPS counter |
+| `Enter` | Chat with everyone online (or the CHAT button) |
 | `T` / `V` | Admin only: move the clock on / change the water, for everyone |
 | `M` / `Esc` | Sound / garage |
 
@@ -71,7 +72,7 @@ Only the admin changes them. Enter the admin code in the ADMIN section of the ga
 
 ## Online
 
-Two lobbies, up to 8 riders each, from the ONLINE section of the garage. Riders, skis, names, spray and tricks show for everyone, with a live leaderboard and trick feed. The wave sets are synced, so you all ride the same surf.
+Two lobbies, up to 8 riders each; you join Lobby 1 automatically (switch in the ONLINE section of the garage). Riders, skis, names, jet streams and tricks show for everyone, with a live leaderboard and trick feed, and you can hose each other with your jet. Press `Enter` (or CHAT) to talk to everyone online. The wave sets, time of day and water are the same for all.
 
 - Inside claude.ai it uses the page's built-in room (everyone needs the shared link and must be signed in).
 - On any other host (Vercel, Netlify, GitHub Pages...) it uses a free Firebase Realtime Database. Set it up once as below; without it the game stays solo there.

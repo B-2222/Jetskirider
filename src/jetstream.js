@@ -130,15 +130,15 @@ export class JetStream {
     this.seedV = Math.random();
 
     const g = new THREE.BufferGeometry();
-    this.aPos = new THREE.BufferAttribute(new Float32Array(MAX * 4 * 3), 3).setUsage(THREE.DynamicDrawUsage);
-    this.aUv = new THREE.BufferAttribute(new Float32Array(MAX * 4 * 2), 2).setUsage(THREE.DynamicDrawUsage);
-    this.aDat = new THREE.BufferAttribute(new Float32Array(MAX * 4 * 4), 4).setUsage(THREE.DynamicDrawUsage);
-    this.aSide = new THREE.BufferAttribute(new Float32Array(MAX * 4 * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.aPos = new THREE.BufferAttribute(new Float32Array(MAX * 6 * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.aUv = new THREE.BufferAttribute(new Float32Array(MAX * 6 * 2), 2).setUsage(THREE.DynamicDrawUsage);
+    this.aDat = new THREE.BufferAttribute(new Float32Array(MAX * 6 * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    this.aSide = new THREE.BufferAttribute(new Float32Array(MAX * 6 * 3), 3).setUsage(THREE.DynamicDrawUsage);
     g.setAttribute('position', this.aPos);
     g.setAttribute('aUv', this.aUv);
     g.setAttribute('aDat', this.aDat);
     g.setAttribute('aSide', this.aSide);
-    this.index = new THREE.BufferAttribute(new Uint16Array((MAX - 1) * 12), 1).setUsage(THREE.DynamicDrawUsage);
+    this.index = new THREE.BufferAttribute(new Uint16Array((MAX - 1) * 18), 1).setUsage(THREE.DynamicDrawUsage);
     g.setIndex(this.index);
     g.setDrawRange(0, 0);
     this.geo = g;
@@ -193,8 +193,9 @@ export class JetStream {
       this.age[i] = lag;
       this.life[i] = 2.6 + vr * 0.6;
       this.dens[i] = am;
-      this.w0[i] = 0.13 + 0.06 * this.wide;
-      this.grow[i] = (2.1 + 1.1 * vr) * spread * this.wide;
+      // a fat column of water out of the nozzle that billows as it goes
+      this.w0[i] = 0.3 + 0.12 * this.wide;
+      this.grow[i] = (3.0 + 1.4 * vr) * spread * this.wide;
       // a jet holds together, then breaks into drops that air slows hard
       this.drag[i] = 0.28 + 0.2 * (1 - vr);
       this.born[i] = this.clock - lag;
@@ -280,6 +281,19 @@ export class JetStream {
       order[m++] = ok ? i : -1;
     }
     let psx = 0, psy = 0, psz = 0, havePrev = false;
+    // a swept stream pulls apart: where neighbours have flown far apart the
+    // ribbon breaks rather than stretching into long slivers
+    const JN = this._join || (this._join = new Uint8Array(MAX));
+    for (let k = 0; k < m; k++) {
+      const i = order[k];
+      const j = k > 0 ? order[k - 1] : -1;
+      if (i < 0 || j < 0) {
+        JN[k] = 0;
+        continue;
+      }
+      const gap = Math.hypot(px[i] - px[j], py[i] - py[j], pz[i] - pz[j]);
+      JN[k] = gap < 0.9 + 0.35 * Math.min(age[i], 2) * this.wide ? 1 : 0;
+    }
     for (let k = 0; k < m; k++) {
       const i = order[k];
       if (i < 0) {
@@ -328,13 +342,14 @@ export class JetStream {
       const t01 = ag / life[i];
       // thins out as it spreads and as it nears the end of its flight
       WD[k * 2] = w;
-      WD[k * 2 + 1] = dens[i] * Math.min(1, 0.32 / Math.max(w, 0.32) + 0.45) * (1 - t01 * t01) * Math.min(1, ag * 25);
+      WD[k * 2 + 1] = dens[i] * Math.min(1, 0.6 / Math.max(w, 0.6) + 0.5) * (1 - t01 * t01) * Math.min(1, ag * 25);
     }
     let vtx = 0;
     let idx = 0;
-    for (let layer = 0; layer < 2; layer++) {
-      const wk = layer === 0 ? this.sheath : 1;
-      const dk = layer === 0 ? 0.38 : 1;
+    // outer mist halo, the spray sheath, then the dense core over them
+    for (let layer = 0; layer < 3; layer++) {
+      const wk = layer === 0 ? this.sheath * 1.35 : layer === 1 ? this.sheath : 1;
+      const dk = layer === 0 ? 0.07 : layer === 1 ? 0.42 : 1;
       let prevV = -1;
       for (let k = 0; k < m; k++) {
         const i = order[k];
@@ -363,7 +378,7 @@ export class JetStream {
           D[v4 + 3] = this.seedV + layer * 0.37;
           vtx++;
         }
-        if (prevV >= 0) {
+        if (prevV >= 0 && JN[k]) {
           I[idx++] = prevV;
           I[idx++] = prevV + 1;
           I[idx++] = vtx - 2;

@@ -3,6 +3,7 @@
 // spray, and the foam wake left on the surface.
 
 import { clamp, smoothstep } from './util.js';
+import { NOZZLE_SWING } from './jetski.js';
 
 const rnd = Math.random;
 const rs = () => rnd() * 2 - 1;
@@ -39,7 +40,16 @@ export class SkiEffects {
     const flow = clamp(T.power * T.pumpLoad, 0, 1);
     const e = T.exposure;
     const d = Math.max(T.nozzleDepth, 0);
-    const jd = T.jetDir;
+    // the jet leaves along the nozzle as it is drawn (swinging further than
+    // the physics steering angle, so steering shows in the stream)
+    const jd0 = T.jetDir;
+    const sw = Math.sin((T.steerAngle || 0) * (NOZZLE_SWING - 1));
+    const jdx = jd0.x + T.rx * sw, jdz = jd0.z + T.rz * sw;
+    const jdl = Math.hypot(jdx, jd0.y, jdz) || 1;
+    const jd = (this._jd || (this._jd = { x: 0, y: 0, z: 0 }));
+    jd.x = jdx / jdl;
+    jd.y = jd0.y / jdl;
+    jd.z = jdz / jdl;
     let out = e + (1 - e) * Math.exp(-d / 0.15) * clamp(0.4 + jd.y * 3.2, 0.3, 1.4);
     out = clamp(out, 0, 1);
     const reversing = T.reverse > 0.05;
@@ -53,6 +63,10 @@ export class SkiEffects {
       const ny = Math.max(T.nozzle.y, T.waterAtNozzle + 0.02);
       // how far the jet is aimed at the sky (trim up and bow up): the rooster
       const trimK = clamp(jd.y * 3, 0, 1);
+      // how far up this ski is trimmed in its own range (most skis trim far
+      // less than a Trixx, but trimmed right up they still throw a tall tail)
+      const trimN = clamp(T.trimAngle / (phys.spec.trimUp || 1), 0, 1);
+      const trimLift = Math.max(0, trimN - trimK) * 0.5;
       const spread = 0.045 + 0.1 * (1 - e) + 0.03 * flow + trimK * 0.06 * (1 - e * 0.5);
       const rate = 5600 * Math.pow(flow, 0.75) * (0.06 + 0.94 * out) * dn * (1 + trimK * 0.9) * (1 + e * 0.6);
       this.acc.jet += rate * dt;
@@ -67,7 +81,7 @@ export class SkiEffects {
         // trimmed up the jet climbs, and leaving right at the waterline it
         // kicks up off the surface: that is what throws the rooster tail high
         const kick = (1 - e) * Math.exp(-d / 0.12) * (0.08 + 0.2 * trimK);
-        const ly = jd.y * (1 + trimK * 1.25) + kick;
+        const ly = jd.y * (1 + trimK * 1.25) + kick + trimLift * (1 - e * 0.5);
         const ll = Math.hypot(jd.x, ly, jd.z) || 1;
         const mg = this.mega;
         this.jet.feed(dt, nx, ny, nz, nv.x, nv.y, nv.z, jd.x / ll, ly / ll, jd.z / ll, vjet * (1 + 0.2 * (mg - 1)), Math.min(1, flow * out * mg), (0.8 + 0.5 * (1 - e) - trimK * 0.15) * Math.sqrt(mg));

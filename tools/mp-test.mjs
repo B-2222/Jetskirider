@@ -113,6 +113,13 @@ if (process.env.ADMIN_CODE) {
   await step(1, [], []);
   console.log('forged', JSON.stringify(await A.evaluate(() => ({ sea: window.game.seaIndex, lowGrav: window.game.phys.fun.lowGrav }))));
 }
+// chat: A's line reaches B as plain text (markup is never run)
+await A.evaluate(() => window.game.mp.sendChat('hello there'));
+await step(0.6, [], []);
+await new Promise((r) => setTimeout(r, 1100));
+await A.evaluate(() => window.game.mp.sendChat('<img src=x onerror=alert(1)>'));
+for (let i = 0; i < 10; i++) await step(0.3, [], []);
+console.log('chat', JSON.stringify(await B.evaluate(() => ({ lines: [...document.querySelectorAll('#chatLog .chat-line')].map((e) => e.textContent), imgs: document.querySelectorAll('#chatLog img').length }))));
 // A leaves: B's remote disappears
 await A.evaluate(() => window.game.toggleLobby('lobby-1'));
 await step(0.5, [], []);

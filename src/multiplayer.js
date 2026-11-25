@@ -28,6 +28,7 @@ const SEND_HZ = 15;
 const DELAY = 0.12; // seconds behind real time that remote riders are drawn
 const r2 = (v) => Math.round(v * 100) / 100;
 const r4 = (v) => Math.round(v * 10000) / 10000;
+const cleanChat = (s) => String(s || '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
 const cleanName = (s) => String(s || '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f]/g, '').trim().slice(0, 16);
 
 class Remote {
@@ -318,6 +319,14 @@ export class Multiplayer {
     this.worldPack = null; // { j: settings JSON, g: admin signature }
     this.onWorld = null;
     this.adminKey = null;
+    // chat: everyone online. Each rider carries their last few messages in
+    // their presence; everyone shows the ones they have not seen yet.
+    this.chatOut = [];
+    this.chatId = Date.now() % 1e9; // ids keep rising across reloads
+    this.chatSeen = new Map(); // peer -> newest message id shown
+    this.chatTimes = [];
+    this.onChat = null; // (name, text, kind)
+    this.peersKnown = false;
     this.tagRoot = document.getElementById('tags');
     this.feedEl = document.getElementById('mpFeed');
     let nick = '';
@@ -376,8 +385,9 @@ export class Multiplayer {
     }
     if (!this.nick) this.nick = 'Rider ' + (100 + Math.floor(Math.random() * 900));
     this.room.onPeers(
-      () => {
+      (ch) => {
         this.readWorld();
+        this.readChat(ch);
         this.changed();
       },
       () => {
@@ -560,6 +570,51 @@ export class Multiplayer {
   // the shared clock in seconds (does not wrap)
   worldClock() {
     return (Date.now() + this.clockOffset) / 1000;
+  }
+
+  // Send a chat line to everyone online. Returns why not, if it was not sent.
+  sendChat(text) {
+    const t = cleanChat(text);
+    if (!t) return 'empty';
+    if (!this.room || this.status !== 'ready') return 'offline';
+    const now = Date.now();
+    this.chatTimes = this.chatTimes.filter((x) => now - x < 10000);
+    if (this.chatTimes.length >= 5 || (this.chatTimes.length && now - this.chatTimes[this.chatTimes.length - 1] < 900)) return 'slow';
+    this.chatTimes.push(now);
+    this.chatOut.push({ i: ++this.chatId, m: t });
+    while (this.chatOut.length > 3) this.chatOut.shift();
+    this.room.presence({ chat: this.chatOut.slice() }).catch(() => {});
+    if (this.onChat) this.onChat(this.nick, t, 'me');
+    return null;
+  }
+
+  // New lines from everyone else (and who came and went).
+  readChat(ch) {
+    if (!this.onChat) return;
+    const first = !this.peersKnown;
+    this.peersKnown = true;
+    for (const p of ch.peers || []) {
+      if (p.sameTab || p.isMe) continue;
+      const pr = p.presence || {};
+      const name = cleanName(pr.n) || this.profileName(p.by) || 'Rider';
+      const list = Array.isArray(pr.chat) ? pr.chat.slice(-3) : [];
+      const seen = this.chatSeen.get(p.peer);
+      let top = seen === undefined ? -1 : seen;
+      for (const c of list) {
+        if (!c || !Number.isFinite(c.i) || typeof c.m !== 'string') continue;
+        // on first sight of a rider, what they said before you arrived is old news
+        if (seen !== undefined && c.i > seen) this.onChat(name, cleanChat(c.m), 'them');
+        if (c.i > top) top = c.i;
+      }
+      this.chatSeen.set(p.peer, top);
+    }
+    if (!first) {
+      for (const p of ch.joined || []) if (!p.sameTab && !p.isMe) this.onChat(cleanName(p.presence && p.presence.n) || 'A rider', 'is online', 'sys');
+      for (const p of ch.left || []) if (!p.sameTab && !p.isMe) {
+        this.onChat(cleanName(p.presence && p.presence.n) || 'A rider', 'left', 'sys');
+        this.chatSeen.delete(p.peer);
+      }
+    }
   }
 
   // Adopt the newest admin-signed world settings anyone online is carrying.

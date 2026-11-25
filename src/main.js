@@ -194,6 +194,7 @@ class Game {
     this.wetLens = new WetLens(document.body);
     this.mp = new Multiplayer(this);
     this.mp.onChange = () => this.refreshMp();
+    this.mp.onChat = (name, text, kind) => this.addChat(name, text, kind);
     this.input.onPadChange = () => this.refreshPadUi();
     this.input.onPadConnect = (gp) => {
       if (gp && gp.mapping === 'standard') this.showHint('Controller connected. ' + this.ctlHint(), 6);
@@ -594,6 +595,17 @@ class Game {
     $('btnHelpClose').addEventListener('click', () => ($('help').hidden = true));
     $('btnPause').addEventListener('click', () => this.openMenu());
     $('btnCam').addEventListener('click', () => this.nextCam());
+    $('btnChat').addEventListener('click', () => this.openChat());
+    $('chatInput').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        const r = this.mp.sendChat(e.target.value);
+        if (r === 'slow') return this.showHint('Easy, one message at a time.', 1.4);
+        if (r === 'offline') this.showHint('Chat works when you are online.', 2);
+        e.target.value = '';
+        this.closeChat();
+      } else if (e.key === 'Escape') this.closeChat();
+    });
     $('btnRear').addEventListener('click', () => this.toggleLookBack());
     $('btnAls').addEventListener('click', () => this.toggleAls());
     LOBBIES.forEach((l, i) => $('mpL' + (i + 1)).addEventListener('click', () => this.toggleLobby(l.id)));
@@ -779,6 +791,40 @@ class Game {
     }
   }
 
+  // ------------------------------------------------------------- chat
+  addChat(name, text, kind) {
+    if (!text) return;
+    const log = $('chatLog');
+    const el = document.createElement('div');
+    el.className = 'chat-line ' + kind;
+    if (kind === 'sys') el.textContent = name + ' ' + text;
+    else {
+      const b = document.createElement('b');
+      b.textContent = name;
+      el.append(b, document.createTextNode(text));
+    }
+    log.appendChild(el);
+    while (log.children.length > 8) log.firstChild.remove();
+    setTimeout(() => el.classList.add('old'), 14000);
+  }
+
+  openChat() {
+    if (this.state !== 'ride' || this.mp.status !== 'ready') return;
+    this.input.keys.clear(); // let go of the throttle while typing
+    $('chat').classList.add('open');
+    const inp = $('chatInput');
+    inp.hidden = false;
+    inp.focus();
+  }
+
+  closeChat() {
+    $('chat').classList.remove('open');
+    const inp = $('chatInput');
+    inp.hidden = true;
+    inp.blur();
+    this.canvas.focus?.();
+  }
+
   // frames per second, counted over half a second at a time
   countFps(dt) {
     if (!this.showFps) return;
@@ -860,6 +906,7 @@ class Game {
   }
 
   openMenu() {
+    this.closeChat();
     this.state = 'menu';
     $('menu').hidden = false;
     $('hud').hidden = true;
@@ -1272,6 +1319,7 @@ class Game {
       else if (this.hasRidden) this.ride();
     }
     if (inp.was('Enter') && this.state === 'menu') this.ride();
+    else if (inp.was('Enter') && this.state === 'ride' && this.mp.status === 'ready') this.openChat();
     if (inp.was('KeyM')) this.toggleMute();
     // time and water belong to the shared world: only the admin moves them
     if (inp.was('KeyT') || inp.was('KeyV')) {
@@ -1442,6 +1490,7 @@ class Game {
     if (document.activeElement !== nameEl && nameEl.value !== mp.nick) nameEl.value = mp.nick;
     nameEl.disabled = mp.status !== 'ready';
     $('mpPanel').hidden = !mp.lobbyId;
+    $('btnChat').hidden = mp.status !== 'ready';
     this.boardT = 0;
   }
 

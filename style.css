@@ -241,3 +241,16 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 .admin input[type='password'] { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; color: var(--foam); font: inherit; padding: 6px 10px; }
 .admin input[type='password']:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 #adminGo { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px 5px; font-size: 13px; }
+
+/* chat */
+.chat { position: absolute; left: max(16px, env(safe-area-inset-left, 0px)); bottom: 190px; width: min(380px, 72vw); display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.chat-log { display: flex; flex-direction: column; gap: 3px; }
+.chat-line { align-self: flex-start; max-width: 100%; background: rgba(8, 14, 20, 0.58); border-radius: 4px; padding: 3px 9px; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; text-shadow: none; transition: opacity 0.6s; }
+.chat-line b { color: var(--accent); margin-right: 7px; font-weight: 700; }
+.chat-line.me b { color: #8fd3ff; }
+.chat-line.sys { color: var(--mist); font-style: italic; }
+.chat-line.old { opacity: 0; }
+.chat.open .chat-line.old { opacity: 1; }
+#chatInput { pointer-events: auto; background: rgba(8, 14, 20, 0.85); border: 1px solid var(--accent); border-radius: 4px; color: var(--foam); font: inherit; font-size: 15px; padding: 7px 10px; }
+#chatInput:focus { outline: none; }
+@media (max-width: 720px) { .chat { bottom: 230px; } }

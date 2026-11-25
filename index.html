@@ -28,6 +28,7 @@
         <div class="score-row dim"><span class="lbl">BEST</span><span class="val" id="best">0</span></div>
       </div>
       <div class="hud-btns">
+        <button class="icon-btn" id="btnChat" title="Chat (Enter)" hidden>CHAT</button>
         <button class="icon-btn" id="btnCam" title="Change camera (C)">CAM</button>
         <button class="icon-btn" id="btnRear" title="Look behind you (B)">REAR</button>
         <button class="icon-btn" id="btnAls" title="Rolling anti-lag (N)" hidden>ALS</button>
@@ -52,6 +53,7 @@
 
     <div class="zone-dir" id="zoneDir" hidden><span class="zone-arrow" id="zoneArrow" aria-hidden="true"></span><span class="lbl" id="zoneLbl">WAVE ZONE</span><span class="zone-dist" id="zoneDist">1.2 km</span><span class="zone-key" id="zoneKey">G</span></div>
 
+    <div class="chat" id="chat"><div class="chat-log" id="chatLog"></div><input id="chatInput" maxlength="90" autocomplete="off" spellcheck="false" placeholder="Say something (Enter sends, Esc closes)" hidden></div>
     <div class="cluster left">
       <div class="vts" title="VTS trim">
         <div class="vts-bars" id="vtsBars"></div>
@@ -160,6 +162,7 @@
         <div><kbd>R</kbd></div><div>Reset to open water</div>
         <div><kbd>G</kbd></div><div>Go to the wave zone (and back)</div>
         <div><kbd>I</kbd></div><div>Show / hide the FPS counter</div>
+        <div><kbd>Enter</kbd></div><div>Chat with everyone online (Enter sends, Esc closes)</div>
         <div><kbd>T</kbd> / <kbd>V</kbd></div><div>Admin only: move the clock on / change the water (for everyone)</div>
         <div><kbd>M</kbd> · <kbd>Esc</kbd></div><div>Sound · Garage</div>
       </div>

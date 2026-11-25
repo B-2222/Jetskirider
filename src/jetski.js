@@ -409,6 +409,10 @@ let _matTex = null;
 // ---------------------------------------------------------------------------
 // The model
 // ---------------------------------------------------------------------------
+// how much further the nozzle and its jet are drawn swinging than the
+// steering angle the physics uses
+export const NOZZLE_SWING = 1.8;
+
 export class JetskiModel {
   constructor(spec, colorway) {
     this.spec = spec;
@@ -998,7 +1002,9 @@ export class JetskiModel {
     const sp = this.spec;
     // bars turn with the nozzle; a right turn swings the nozzle outlet to the right
     this.steer.rotation.y = -(tele.steerAngle / sp.steerMax) * 0.62;
-    this.nozzleYaw.rotation.y = tele.steerAngle; // +Y rotation takes -X (aft) toward +Z (starboard)
+    // (drawn swinging further than the physics angle, so you can see it steer;
+    // the jet stream follows it exactly)
+    this.nozzleYaw.rotation.y = tele.steerAngle * NOZZLE_SWING; // +Y rotation takes -X (aft) toward +Z (starboard)
     this.nozzlePitch.rotation.z = -tele.trimAngle; // nozzle outlet tilts up with trim
     const target = tele.reverse > 0.05 ? 1.25 : 0;
     this.gate.rotation.z = lerp(this.gate.rotation.z, -target, clamp(dt * 12, 0, 1));
