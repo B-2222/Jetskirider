@@ -72,7 +72,7 @@ Only the admin changes them. Enter the admin code in the ADMIN section of the ga
 
 ## Online
 
-Two lobbies, up to 8 riders each; you join Lobby 1 automatically (switch in the ONLINE section of the garage). Riders, skis, names, jet streams and tricks show for everyone, with a live leaderboard and trick feed, and you can hose each other with your jet. Press `Enter` (or CHAT) to talk to everyone online. The wave sets, time of day and water are the same for all.
+Two lobbies, up to 16 riders each; you join Lobby 1 automatically (switch in the ONLINE section of the garage). Riders, skis, names, jet streams and tricks show for everyone, with a live leaderboard and trick feed, and you can hose each other with your jet. Press `Enter` (or CHAT) to talk to everyone online. The wave sets, time of day and water are the same for all.
 
 - Inside claude.ai it uses the page's built-in room (everyone needs the shared link and must be signed in).
 - On any other host (Vercel, Netlify, GitHub Pages...) it uses a free Firebase Realtime Database. Set it up once as below; without it the game stays solo there.
@@ -95,9 +95,24 @@ Breaking surf rolls through a marked patch of open water east of the lagoon: wav
 
 Sets vary: in every six (about six and a half minutes) two are bigger and one is huge, with faces up to about 5 m, and the game calls it out when one is on the horizon. Everyone online rides the same sets. Watch the lip: punch through it at speed and you ride on, but sit under a big one as it comes down and you get smashed.
 
-## The garage
+## Money, the garage and TRIM-X
 
-Spark Trixx, Spark 2up, GTI SE 170, GTR 230, RXP-X 325, RXT-X 325, a 600 hp tuned RXP-X and two stand-ups (Freestyle and Race), each with its own weight, thrust, grip, trim range and colourways.
+Every trick pays cash (points turn into dollars, so big tricks and combos pay most), and so do buoy races (by medal), missions (one-off challenges with a reward each) and spraying other riders online with your jet. Cash, skis, kits, missions and best race times are saved in the browser on that device.
+
+You start on the Spark 2UP with $500. The garage lists every ski in price order: pick a locked one to look at it, then BUY it when you have the cash. Fourteen skis from the Spark 2UP (free) to the 600 hp tuned RXP-X ($120,000): Spark Trixx, Explorer Pro 170, GTI SE 170, the Freestyle, Race and Pro Freestyle stand-ups, GTR 230, Wake Pro 230, RXT-X 325, GTX Limited 325, RXP-X 325, RXP-X 450 Turbo and the 600. Each has its own weight, thrust, grip, trim range and colourways.
+
+TRIM-X kits are bought per sit-down ski. Stage 1 extends the trim range for a proper rooster tail, Stage 2 trims even further for a massive one (the Trixx has Stage 1 built in). A ski without a kit rides exactly as before.
+
+## Maps
+
+Pick the map in the garage (the game reloads into it). Riders online only see others on the same map; the leaderboard shows who is where.
+
+- **Palm Bay**: the original lagoon with kickers and slalom buoys. Bonus: air off the ramps pays double.
+- **Thunder Reef**: a volcanic island with an outer reef. The surf comes in giant, fast sets of three. Bonus: wave tricks and barrels pay double.
+- **Glass Lake**: a flat lake in a ring of forest hills, with a wave pool kicking out quick little rollers. Bonus: slides, wheelies and flat-water flips pay double.
+- **Storm Coast**: cliffs and sea stacks, always rough, heavy surf that keeps coming, rain and lightning. Bonus: everything pays 1.5x.
+
+Each map has a buoy race: a loop of gates. Choose *Race start* in the garage (or just ride through the chequered gate) and the clock starts; take every gate in order, following the green marker, and come back through the start. Gold, silver and bronze times are shown on screen.
 
 ## How it works
 

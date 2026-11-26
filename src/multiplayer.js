@@ -8,6 +8,7 @@
 // Firebase Realtime Database when src/firebase-config.js has a config;
 // without one the game stays solo.
 
+import { mapById } from './maps.js';
 import * as THREE from 'three';
 import { JetskiModel } from './jetski.js';
 import { Rider } from './rider.js';
@@ -23,13 +24,15 @@ export const LOBBIES = [
   { id: 'lobby-1', name: 'Lobby 1' },
   { id: 'lobby-2', name: 'Lobby 2' },
 ];
-export const MAX_PER_LOBBY = 8;
+export const MAX_PER_LOBBY = 16;
 const SEND_HZ = 15;
 const DELAY = 0.12; // seconds behind real time that remote riders are drawn
 const r2 = (v) => Math.round(v * 100) / 100;
 const r4 = (v) => Math.round(v * 10000) / 10000;
 const cleanChat = (s) => String(s || '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
 const cleanName = (s) => String(s || '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f]/g, '').trim().slice(0, 16);
+
+const rx0 = (s) => (Number.isFinite(s.rx) ? clamp(s.rx, 1, 2.5) : 1);
 
 class Remote {
   constructor(mp, peer) {
@@ -165,9 +168,14 @@ class Remote {
   }
 
   update(dt, now, camPos, budget) {
-    if (!this.model || !this.sample(now)) {
+    // riders on another map are in another world: not drawn here
+    if (!this.model || !this.sample(now) || (this.state.m || 'bay') !== this.mp.game.mapId) {
       this.group.visible = false;
       this.tag.hidden = true;
+      if (this.jet) {
+        this.jet.clear();
+        this.wash.clear();
+      }
       return;
     }
     const s = this.state;
@@ -237,8 +245,10 @@ class Remote {
       // their game (older versions: worked out from the nozzle)
       const jo = Number.isFinite(s.jo) ? clamp(s.jo, 0, 1) : power * (air ? 1 : clamp(0.35 + jd.y * 3, 0.15, 1));
       const jw = Number.isFinite(s.jw) ? clamp(s.jw, 0, 1) : air ? 0 : power * 0.6;
-      const vj = this.spec.jet * (0.5 + 0.5 * power);
-      const ly = jd.y * (1 + trimK * 1.25) + (air ? 0 : 0.08 + 0.2 * trimK) * (1 - jo);
+      const vj = this.spec.jet * (0.5 + 0.5 * power) * (1 + (rx0(s) - 1) * 0.22);
+      // a TRIM-X kit on their ski: a taller rooster tail
+      const rx = Number.isFinite(s.rx) ? clamp(s.rx, 1, 2.5) : 1;
+      const ly = jd.y * (1 + trimK * 1.25) + (air ? 0 : 0.08 + 0.2 * trimK) * (1 - jo) + (rx - 1) * 0.4 * trimK;
       const ll = Math.hypot(jd.x, ly, jd.z) || 1;
       const wy = surf(exit.x, exit.z);
       this.jet.feed(dt, exit.x, Math.max(exit.y, wy + 0.02), exit.z, this.vel.x, this.vel.y, this.vel.z, jd.x / ll, ly / ll, jd.z / ll, vj * (0.5 + 0.5 * jo / Math.max(power, 0.05)), jo, 0.9);
@@ -695,7 +705,11 @@ export class Multiplayer {
     const idle = g.state !== 'ride';
     this.sendT -= dt;
     if (this.sendT > 0) return;
-    this.sendT = idle ? 0.5 : 1 / this.sendHz;
+    // a full lobby sends a little less often each, so the total traffic
+    // (everyone hears everyone) stays reasonable
+    const n = this.remotes.size + 1;
+    const crowd = n > 10 ? 0.6 : n > 5 ? 0.8 : 1;
+    this.sendT = idle ? 0.5 : 1 / (this.sendHz * crowd);
     const p = g.phys;
     const T = p.tele;
     const st = {
@@ -714,6 +728,8 @@ export class Multiplayer {
       jo: r2(g.effects.jetOut || 0),
       jw: r2(g.effects.washAmt || 0),
       tu: r2(T.tuck || 0),
+      rx: g.spec.rooster || 1,
+      m: g.mapId,
       a: T.airborne ? 1 : 0,
       w: g.wipe.on ? 1 : 0,
       f: T.reverse > 0.05 ? 1 : 0,
@@ -798,7 +814,10 @@ export class Multiplayer {
   // leaderboard rows for the HUD: me plus everyone here, best first
   board() {
     const rows = [{ name: this.nick, score: this.game.tricks.score | 0, me: true }];
-    for (const r of this.remotes.values()) rows.push({ name: r.name, score: r.score, me: false });
+    for (const r of this.remotes.values()) {
+      const m = r.state ? r.state.m || 'bay' : this.game.mapId;
+      rows.push({ name: r.name + (m !== this.game.mapId ? ' · ' + mapById(m).name.split(' ').map((w) => w[0] + w.slice(1).toLowerCase()).join(' ') : ''), score: r.score, me: false });
+    }
     rows.sort((a, b) => b.score - a.score);
     return rows;
   }

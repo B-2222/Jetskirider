@@ -8,6 +8,7 @@ import { DEG } from './util.js';
 export const SKIS = [
   {
     id: 'trixx',
+    price: 2500,
     name: 'SPARK TRIXX',
     tagline: 'Rotax 900 ACE · 90 hp',
     blurb: 'Extended VTS trim, step wedges and a riser bar. Built to wheelie, slide and spin.',
@@ -42,6 +43,7 @@ export const SKIS = [
   },
   {
     id: 'spark',
+    price: 0,
     name: 'SPARK 2UP',
     tagline: 'Rotax 900 ACE · 60 hp',
     blurb: 'The lightweight that started it all. Playful, flickable, easy to slide.',
@@ -76,6 +78,7 @@ export const SKIS = [
   },
   {
     id: 'gti',
+    price: 7500,
     name: 'GTI SE 170',
     tagline: 'Rotax 1630 ACE · 170 hp',
     blurb: 'The all-rounder. Stable, predictable, quick enough to grin.',
@@ -108,6 +111,7 @@ export const SKIS = [
   },
   {
     id: 'gtr',
+    price: 14000,
     name: 'GTR 230',
     tagline: 'Supercharged 1630 ACE · 230 hp',
     blurb: 'Supercharged muscle on the playful GTI hull. Loud pedal, loose tail.',
@@ -140,6 +144,7 @@ export const SKIS = [
   },
   {
     id: 'rxp',
+    price: 38000,
     name: 'RXP-X 325',
     tagline: 'Supercharged 1630 ACE · 325 hp',
     blurb: 'The race ski. Violent launches, T3-R hull that carves like it is on rails.',
@@ -175,6 +180,7 @@ export const SKIS = [
   },
   {
     id: 'rxt',
+    price: 28000,
     name: 'RXT-X 325',
     tagline: 'Supercharged 1630 ACE · 325 hp',
     blurb: 'Big-water bruiser. The ST3 hull swallows chop at full throttle.',
@@ -208,6 +214,7 @@ export const SKIS = [
   },
   {
     id: 'rxp600',
+    price: 120000,
     name: 'RXP-X 600 TUNED',
     tagline: 'Built 1630 · big turbo · 600 hp',
     blurb: 'Not a factory ski. A fully built race hull that does 160 km/h and tries to rip your arms off. Just for fun.',
@@ -243,6 +250,7 @@ export const SKIS = [
   },
   {
     id: 'sfree',
+    price: 9000,
     name: 'FREESTYLE STANDUP',
     tagline: 'Built 1100 two-stroke · 160 hp',
     blurb: 'A custom freestyle stand-up (Sea-Doo never built one). Tiny, light, no trim. Lean it, slide it, flip it.',
@@ -284,6 +292,7 @@ export const SKIS = [
   },
   {
     id: 'srace',
+    price: 22000,
     name: 'RACE STANDUP',
     tagline: 'Built 1200 two-stroke · 260 hp',
     blurb: 'A custom race stand-up. Longer and grippier: rail it through the buoys flat out. Still flips if you dare.',
@@ -324,5 +333,122 @@ export const SKIS = [
     ],
   },
 ];
+
+// More skis for the shop, built on the closest existing machine so every
+// physics number is there, then changed where the real ski differs.
+const from = (id, o) => ({ ...SKIS.find((s) => s.id === id), ...o });
+SKIS.push(
+  from('gti', {
+    id: 'explorer',
+    price: 6000,
+    name: 'EXPLORER PRO 170',
+    tagline: 'Rotax 1630 ACE · 170 hp',
+    blurb: 'The adventure ski. Long, heavy and planted: it shrugs off chop and goes all day. Not one for tricks.',
+    big: true,
+    L: 3.6,
+    B: 1.27,
+    mass: 486,
+    thrust: 3150,
+    top: 23.3, // ~84 km/h
+    grip: 24,
+    gMax: 1.25,
+    sternBias: 1.12,
+    leanTorque: 290,
+    stats: { speed: 0.4, accel: 0.4, grip: 0.6, tricks: 0.12 },
+    colorways: [
+      { name: 'Sand / Teal', hull: 0xe9e2d0, deck: 0x6b6250, accent: 0x14b8a6, seat: 0x1b1e22, trim: 0x14b8a6 },
+      { name: 'Expedition Green', hull: 0x1d2a22, deck: 0x3f5a46, accent: 0xffb020, seat: 0x16181b, trim: 0xffb020 },
+    ],
+  }),
+  from('gtr', {
+    id: 'wake',
+    price: 16000,
+    name: 'WAKE PRO 230',
+    tagline: 'Supercharged 1630 ACE · 230 hp',
+    blurb: 'Built to tow riders, with a wide stable hull. Extra trim range out of the box for a fat rooster tail.',
+    L: 3.45,
+    B: 1.27,
+    mass: 462,
+    thrust: 4050,
+    top: 28.6, // ~103 km/h
+    trimUp: 13 * DEG,
+    grip: 26,
+    gMax: 1.4,
+    sternBias: 1.05,
+    stats: { speed: 0.56, accel: 0.62, grip: 0.7, tricks: 0.45 },
+    colorways: [
+      { name: 'Neon Yellow / Black', hull: 0x111316, deck: 0xe8ff1a, accent: 0x111316, seat: 0x16181b, trim: 0xe8ff1a },
+      { name: 'Shark Grey / Cyan', hull: 0xd9dee2, deck: 0x4a5560, accent: 0x18d6ff, seat: 0x16181b, trim: 0x18d6ff },
+    ],
+  }),
+  from('rxt', {
+    id: 'gtx',
+    price: 32000,
+    name: 'GTX LIMITED 325',
+    tagline: 'Supercharged 1630 ACE · 325 hp',
+    blurb: 'The luxury tourer: everything on it, and 325 supercharged horses to make it fly. Smooth and very fast.',
+    mass: 470,
+    thrust: 5250,
+    top: 31.4, // ~113 km/h
+    grip: 30,
+    gMax: 1.55,
+    stats: { speed: 0.71, accel: 0.75, grip: 0.8, tricks: 0.22 },
+    colorways: [
+      { name: 'Champagne / Black', hull: 0x16171a, deck: 0xc9b38a, accent: 0x16171a, seat: 0x2a2018, trim: 0xd9b56a },
+      { name: 'Deep Blue Metallic', hull: 0x0f1a2c, deck: 0x1f4f8f, accent: 0xe8eef3, seat: 0x15171a, trim: 0x7fb8ff },
+    ],
+  }),
+  from('sfree', {
+    id: 'sfreepro',
+    price: 45000,
+    name: 'PRO FREESTYLE STANDUP',
+    tagline: 'Built 1200 two-stroke · 200 hp',
+    blurb: 'The pro-level freestyle stand-up (another custom build). Lighter, harder hitting and it rotates faster: doubles come easy.',
+    mass: 188,
+    thrust: 3600,
+    top: 22.0, // ~79 km/h
+    jet: 35,
+    grip: 27,
+    flipRate: 6.2,
+    spinRate: 6.9,
+    popK: 1.08,
+    stats: { speed: 0.36, accel: 0.75, grip: 0.62, tricks: 1.0 },
+    colorways: [
+      { name: 'Gold / Black', hull: 0x111316, deck: 0xffc531, accent: 0x111316, seat: 0x1a1d21, trim: 0xffc531 },
+      { name: 'Ice / Hot Pink', hull: 0xeef2f5, deck: 0xff2f92, accent: 0x14161a, seat: 0x1a1d21, trim: 0xff2f92 },
+    ],
+  }),
+  from('rxp600', {
+    id: 'rxp450',
+    price: 70000,
+    name: 'RXP-X 450 TURBO',
+    tagline: 'Built 1630 · turbo · 450 hp',
+    blurb: 'A turbo build on the race hull (not a factory ski). 145 km/h and a launch that pins you to the back of the seat.',
+    thrust: 6600,
+    top: 40.3, // ~145 km/h
+    jet: 53,
+    grip: 37,
+    stats: { speed: 0.9, accel: 0.9, grip: 1.0, tricks: 0.3 },
+    colorways: [
+      { name: 'Racing Orange', hull: 0x0b0c0e, deck: 0xff6a13, accent: 0x15171a, seat: 0x101114, trim: 0xff6a13 },
+      { name: 'Electric Blue', hull: 0x0b0c0e, deck: 0x1f6bff, accent: 0xe9f1ff, seat: 0x101114, trim: 0x5fe1ff },
+    ],
+  })
+);
+
+// TRIM-X kits (bought per ski): more trim range for a taller rooster tail.
+// The Trixx has stage 1 built in. Stand-ups have no trim to extend.
+export const TRIMX = [
+  { name: 'STOCK' },
+  { name: 'TRIM-X STAGE 1', price: 3000, trimUp: 17, rooster: 1.3 },
+  { name: 'TRIM-X STAGE 2', price: 9000, trimUp: 25, rooster: 1.75 },
+];
+export const trimxBase = (spec) => (spec.standup ? -1 : spec.trixx ? 1 : 0);
+export function tunedSpec(spec, stage) {
+  const base = trimxBase(spec);
+  if (base < 0 || stage <= base) return spec;
+  const k = TRIMX[stage];
+  return { ...spec, trimUp: Math.max(spec.trimUp, (k.trimUp + (spec.trixx ? 5 : 0)) * DEG), rooster: k.rooster * (spec.trixx ? 1.1 : 1), trimx: stage };
+}
 
 export const skiById = (id) => SKIS.find((s) => s.id === id) || SKIS[0];

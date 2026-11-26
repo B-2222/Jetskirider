@@ -132,5 +132,19 @@ await A.close();
 for (let i = 0; i < 40 && (await B.evaluate(() => window.game.mp.remotes.size > 0)); i++) await step(0.3, [], []);
 if (process.env.ADMIN_CODE) console.log('B keeps the world after the admin left:', await B.evaluate(() => window.game.mp.world.sea));
 console.log('after A closes the tab, B remotes:', await B.evaluate(() => window.game.mp.remotes.size), 'counts', JSON.stringify(await B.evaluate(() => window.game.mp.counts())));
+// a rider on another map is in the lobby (on the board) but not drawn here
+{
+  const C = await ctx.newPage();
+  await C.goto(url + '&ski=gti&map=reef');
+  await C.waitForFunction('window.game && window.game.frames > 0 && window.game.mp.status === "ready"', null, { timeout: 120000 });
+  await C.evaluate(() => { const g = window.game; g.renderer.setAnimationLoop(null); g.noRender = true; g.__now = performance.now(); g.mp.setNick('Cy'); window.__adv = (secs) => { const k = Math.round(secs * 30); for (let i = 0; i < k; i++) { g.__now += 1000 / 30; g.frame(g.__now); } }; });
+  await C.evaluate(() => window.game.mp.lobbyId || window.game.toggleLobby('lobby-1'));
+  await C.evaluate(() => document.getElementById('btnRide').click());
+  for (let i = 0; i < 30; i++) {
+    await C.evaluate(() => window.__adv(0.1));
+    await B.evaluate(() => window.__adv(0.1));
+  }
+  console.log('other map', JSON.stringify(await B.evaluate(() => ({ remotes: window.game.mp.remotes.size, visible: [...window.game.mp.remotes.values()].map((r) => r.group.visible), board: window.game.mp.board().map((r) => r.name) }))));
+}
 await browser.close();
 srv.close();

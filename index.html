@@ -14,6 +14,7 @@
   <canvas id="gl" aria-label="Jetski Rider game view"></canvas>
   <div id="tags" aria-hidden="true"></div>
 
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div id="loading"><div class="load-inner"><div class="load-title">JETSKI RIDER</div><div class="load-sub" id="loadText">Filling the lagoon…</div></div></div>
 
   <!-- ===================== HUD ===================== -->
@@ -26,6 +27,7 @@
       <div class="score">
         <div class="score-row"><span class="lbl">SCORE</span><span class="val" id="score">0</span></div>
         <div class="score-row dim"><span class="lbl">BEST</span><span class="val" id="best">0</span></div>
+        <div class="score-row cash-row"><span class="lbl">CASH</span><span class="val" id="cash">$0</span></div>
       </div>
       <div class="hud-btns">
         <button class="icon-btn" id="btnChat" title="Chat (Enter)" hidden>CHAT</button>
@@ -50,6 +52,8 @@
     </div>
 
     <div class="banner" id="banner" hidden></div>
+
+    <div class="race-hud" id="race" hidden><span class="race-arrow" id="raceArrow" aria-hidden="true"></span><div class="race-main"><b id="raceTime">START</b><span id="raceSub"></span></div><span class="race-goal" id="raceGoal"></span></div>
 
     <div class="zone-dir" id="zoneDir" hidden><span class="zone-arrow" id="zoneArrow" aria-hidden="true"></span><span class="lbl" id="zoneLbl">WAVE ZONE</span><span class="zone-dist" id="zoneDist">1.2 km</span><span class="zone-key" id="zoneKey">G</span></div>
 
@@ -100,7 +104,13 @@
       <header class="menu-head">
         <h1>JETSKI RIDER</h1>
         <p class="tag">Open-water freestyle. Sea-Doo only.</p>
+        <div class="wallet" title="Your cash"><span class="lbl">CASH</span><b id="wallet">$0</b></div>
       </header>
+
+      <section class="maps" aria-label="Choose a map">
+        <div class="row"><span class="lbl">MAP</span><div class="seg wrap" id="segMap"></div></div>
+        <p class="map-info" id="mapInfo"></p>
+      </section>
 
       <section class="garage" aria-label="Choose your ski">
         <div class="ski-list" id="skiList" role="listbox" aria-label="Sea-Doo models"></div>
@@ -109,6 +119,8 @@
           <p id="mBlurb"></p>
           <div class="stats" id="mStats"></div>
           <div class="row"><span class="lbl">COLOUR</span><div class="swatches" id="mColors"></div><span class="cw-name" id="mColorName"></span></div>
+          <div class="row trimx" id="trimxRow"><span class="lbl">TRIM-X</span><span class="world-val" id="trimxVal">Stock trim</span><button id="btnTrimx">STAGE 1</button></div>
+          <div class="buy-row" id="buyRow" hidden><button class="buy" id="btnBuy">BUY</button><span id="buyNote"></span></div>
         </div>
       </section>
 
@@ -116,6 +128,11 @@
         <div class="row"><span class="lbl">START</span><div class="seg" id="segSpot"></div></div>
         <div class="row"><span class="lbl">WATER</span><span class="world-val" id="worldSea">Light chop</span></div>
         <div class="row"><span class="lbl">TIME</span><span class="world-val" id="worldTime">12:00</span></div>
+      </section>
+
+      <section class="missions" aria-label="Missions">
+        <div class="row"><span class="lbl">MISSIONS</span><span class="world-val" id="missionCount">0 / 0 done</span></div>
+        <ol class="mission-list" id="missionList"></ol>
       </section>
 
       <section class="mp" aria-label="Ride online">
@@ -132,7 +149,7 @@
           <div class="row"><span class="lbl">CLOCK</span><div class="seg" id="admClock"><button data-s="auto">Normal day</button><button data-s="0">Freeze</button><button data-s="1">Run</button><button data-s="12">Fast</button></div></div>
           <div class="row"><span class="lbl">WATER</span><div class="seg" id="admSea"></div></div>
           <div class="row"><span class="lbl">FUN</span><div class="seg wrap" id="admFun"></div></div>
-          <div class="row"><span class="lbl">EVENTS</span><div class="seg wrap"><button id="admHuge">Huge set now</button><button id="admSummon">Everyone to the waves</button><button id="admReset">Reset world</button></div></div>
+          <div class="row"><span class="lbl">EVENTS</span><div class="seg wrap"><button id="admHuge">Huge set now</button><button id="admSummon">Everyone to the waves</button><button id="admReset">Reset world</button><button id="admCash">Give me $10,000</button></div></div>
           <p class="mp-status" id="admStatus"></p>
         </div>
       </section>
@@ -180,6 +197,14 @@
         <div><span class="pb pb-VIEW">VIEW</span> <span class="pb pb-MENU">MENU</span></div><div>Rolling anti-lag · garage</div>
         <div>In the garage</div><div>D-pad moves, <span class="pb pb-A">A</span> selects, <span class="pb pb-LB">LB</span> <span class="pb pb-RB">RB</span> change ski, <span class="pb pb-MENU">MENU</span> rides</div>
       </div>
+      <h3>MONEY, SKIS AND MAPS</h3>
+      <ul>
+        <li><b>Cash:</b> every trick pays (bigger tricks and combos pay more). So do buoy races, missions, and spraying other riders online with your jet. Your cash and skis are saved on this device.</li>
+        <li><b>Garage:</b> you start on the Spark 2UP. Pick a locked ski to see it, then BUY it once you have the cash.</li>
+        <li><b>TRIM-X:</b> a kit for each sit-down ski. Stage 1 adds trim range for a proper rooster tail; Stage 2 trims even further for a massive one. Trim up with <kbd>E</kbd>.</li>
+        <li><b>Maps:</b> Palm Bay, Thunder Reef (giant fast surf), Glass Lake (flat water and quick rollers) and Storm Coast (rough, rain, heavy surf). Each one has its own cash bonus.</li>
+        <li><b>Buoy race:</b> pick <i>Race start</i> in the garage, or ride through the chequered gate. Take every gate in order (follow the green marker), then back through the start. Faster times win better medals.</li>
+      </ul>
       <h3>TRICKS</h3>
       <ul>
         <li><b>Stand-ups:</b> no trim; lean the whole ski into turns, hold <kbd>Shift</kbd> to slide. In the air: <kbd>Space</kbd> backflip, steer to spin. Space starts the flip the moment you are in the air: on a small jump you may not get round, so pick a decent wave. Hold <kbd>Space</kbd> up the face and through the lip for the biggest flips. Let go once the rotation is under way and the rider lands it.</li>

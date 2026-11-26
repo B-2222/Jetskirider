@@ -82,7 +82,12 @@ function palmFrondTexture() {
   });
 }
 
-export function buildVegetation(terrain) {
+// veg (per map): how many palms, forest blobs and rocks, pine-shaped trees,
+// darker storm colours. Leaving it out gives Palm Bay's island look.
+export function buildVegetation(terrain, veg = {}) {
+  const nPalms = veg.palms ?? 420;
+  const nBlobs = veg.canopy ?? 1500;
+  const nRocks = veg.rocks ?? 170;
   const group = new THREE.Group();
   const rng = makeRng(99);
   const dummy = new THREE.Object3D();
@@ -122,7 +127,7 @@ export function buildVegetation(terrain) {
   const crownM = new THREE.MeshStandardMaterial({ map: frondTex, alphaTest: 0.35, side: THREE.DoubleSide, roughness: 0.8, color: 0xd8f0b0 });
   const spots = [];
   let guard = 0;
-  while (spots.length < 420 && guard++ < 60000) {
+  while (spots.length < nPalms && guard++ < 60000) {
     const is = ISLANDS[(rng() * ISLANDS.length) | 0];
     const a = rng() * Math.PI * 2;
     const r = is.r * (0.55 + rng() * 0.6);
@@ -159,7 +164,7 @@ export function buildVegetation(terrain) {
   const blobM = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: false, envMapIntensity: 0.3 });
   const blobs = [];
   guard = 0;
-  while (blobs.length < 1500 && guard++ < 90000) {
+  while (blobs.length < nBlobs && guard++ < 90000) {
     const is = ISLANDS[(rng() * ISLANDS.length) | 0];
     const a = rng() * Math.PI * 2;
     const r = is.r * Math.sqrt(rng()) * 0.95;
@@ -173,12 +178,15 @@ export function buildVegetation(terrain) {
   const cc = new THREE.Color();
   blobs.forEach((s, i) => {
     const sc = 3.5 + rng() * 6;
-    dummy.position.set(s[0], s[1] + sc * 0.3, s[2]);
+    dummy.position.set(s[0], s[1] + sc * (veg.pine ? 0.9 : 0.3), s[2]);
     dummy.rotation.set(0, rng() * 6.28, 0);
-    dummy.scale.set(sc, sc * (0.7 + rng() * 0.5), sc);
+    if (veg.pine) dummy.scale.set(sc * 0.55, sc * (1.5 + rng() * 0.7), sc * 0.55);
+    else dummy.scale.set(sc, sc * (0.7 + rng() * 0.5), sc);
     dummy.updateMatrix();
     canopy.setMatrixAt(i, dummy.matrix);
-    cc.setHSL(0.27 + rng() * 0.07, 0.5 + rng() * 0.2, 0.13 + rng() * 0.1);
+    if (veg.pine) cc.setHSL(0.3 + rng() * 0.06, 0.45 + rng() * 0.2, 0.09 + rng() * 0.07);
+    else if (veg.dark) cc.setHSL(0.22 + rng() * 0.08, 0.25 + rng() * 0.15, 0.08 + rng() * 0.06);
+    else cc.setHSL(0.27 + rng() * 0.07, 0.5 + rng() * 0.2, 0.13 + rng() * 0.1);
     canopy.setColorAt(i, cc);
   });
   group.add(canopy);
@@ -197,7 +205,7 @@ export function buildVegetation(terrain) {
   const rockM = new THREE.MeshStandardMaterial({ color: 0x6d675f, roughness: 0.95, flatShading: true });
   const rocks = [];
   guard = 0;
-  while (rocks.length < 170 && guard++ < 60000) {
+  while (rocks.length < nRocks && guard++ < 60000) {
     const is = ISLANDS[(rng() * ISLANDS.length) | 0];
     const a = rng() * Math.PI * 2;
     const r = is.r * (0.8 + rng() * 0.4);

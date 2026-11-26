@@ -60,7 +60,9 @@ export class SkiEffects {
     this.rooster = 0;
 
     if (flow > 0.015 && !reversing) {
-      const vjet = T.jetSpeed * (0.5 + 0.5 * out);
+      // TRIM-X: a kit throws a taller, heavier rooster tail when trimmed up
+      const rx = phys.spec.rooster || 1;
+      const vjet = T.jetSpeed * (0.5 + 0.5 * out) * (1 + (rx - 1) * 0.22 * clamp(T.trimAngle / (phys.spec.trimUp || 1), 0, 1));
       const nv = T.nozzleVel;
       const nx = T.nozzle.x, nz = T.nozzle.z;
       const ny = Math.max(T.nozzle.y, T.waterAtNozzle + 0.02);
@@ -69,9 +71,9 @@ export class SkiEffects {
       // how far up this ski is trimmed in its own range (most skis trim far
       // less than a Trixx, but trimmed right up they still throw a tall tail)
       const trimN = clamp(T.trimAngle / (phys.spec.trimUp || 1), 0, 1);
-      const trimLift = Math.max(0, trimN - trimK) * 0.5;
+      const trimLift = Math.max(0, trimN - trimK) * 0.5 + (rx - 1) * 0.4 * trimN;
       const spread = 0.045 + 0.1 * (1 - e) + 0.03 * flow + trimK * 0.06 * (1 - e * 0.5);
-      const rate = 5600 * Math.pow(flow, 0.75) * (0.06 + 0.94 * out) * dn * (1 + trimK * 0.9) * (1 + e * 0.6);
+      const rate = 5600 * Math.pow(flow, 0.75) * (0.06 + 0.94 * out) * dn * (1 + trimK * 0.9) * (1 + e * 0.6) * (1 + (rx - 1) * trimN);
       this.acc.jet += rate * dt;
       let n = this.acc.jet | 0;
       this.acc.jet -= n;
@@ -87,7 +89,7 @@ export class SkiEffects {
         const ly = jd.y * (1 + trimK * 1.25) + kick + trimLift * (1 - e * 0.5);
         const ll = Math.hypot(jd.x, ly, jd.z) || 1;
         const mg = this.mega;
-        this.jet.feed(dt, nx, ny, nz, nv.x, nv.y, nv.z, jd.x / ll, ly / ll, jd.z / ll, vjet * (1 + 0.2 * (mg - 1)), Math.min(1, flow * out * mg), (0.8 + 0.5 * (1 - e) - trimK * 0.15 + T.speed / 80) * Math.sqrt(mg));
+        this.jet.feed(dt, nx, ny, nz, nv.x, nv.y, nv.z, jd.x / ll, ly / ll, jd.z / ll, vjet * (1 + 0.2 * (mg - 1)), Math.min(1, flow * out * mg * (1 + (rx - 1) * 0.5 * trimN)), (0.8 + 0.5 * (1 - e) - trimK * 0.15 + T.speed / 80) * Math.sqrt(mg) * (1 + (rx - 1) * 0.3 * trimN));
         this.jetOut = flow * out;
       }
       // the droplets are now only the fringe of the stream

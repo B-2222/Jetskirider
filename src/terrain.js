@@ -6,6 +6,8 @@ import { makeNoise2D, smoothstep, clamp } from './util.js';
 export const WORLD_SIZE = 4096; // metres, centred on the origin
 export const TERRAIN_RES = 768;
 const SEA_FLOOR = -26;
+// the noise seed for the land (a map may change it before the world is built)
+export const TERRAIN = { seed: 1337 };
 
 export const ISLANDS = [
   { x: -60, z: -700, r: 380, h: 88 },
@@ -35,7 +37,7 @@ export class Terrain {
   }
 
   generate() {
-    const N = makeNoise2D(1337);
+    const N = makeNoise2D(TERRAIN.seed);
     const res = this.res;
     const size = this.size;
     for (let j = 0; j < res; j++) {

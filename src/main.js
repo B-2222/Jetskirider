@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { clamp, lerp, damp, smoothstep, wrapAngle } from './util.js';
 import { Waves, SEA_STATES, WAVE_ZONE } from './waves.js';
 import { Terrain, World } from './terrain.js';
-import { SKIS } from './specs.js';
+import { SKIS, TRIMX, tunedSpec, trimxBase } from './specs.js';
 import { SkiPhysics } from './physics.js';
 import { makeNoiseTexture, makeWaterNormalTexture, makeHeightTexture } from './textures.js';
 import { Sky, TIMES } from './sky.js';
@@ -17,6 +17,11 @@ import { WetLens } from './wetlens.js';
 import { todAt, DAY_LEN, PRESET_PHASE, clockText, hourOf, phaseOfHour } from './daycycle.js';
 import { unlock, FUN } from './world.js';
 import { SURF } from './surf.js';
+import { MAPS, mapById, applyMap } from './maps.js';
+import { Career, START_SKI, CASH_PER_POINT, RACE_PAY, SPRAY_PAY, money } from './career.js';
+import { MISSIONS, checkMissions } from './missions.js';
+import { Race, clock } from './races.js';
+import { Rain } from './rain.js';
 
 // names come from other players: keep them out of anything read as HTML
 const plain = (s) => String(s || '').replace(/[<>&"'`]/g, '');
@@ -76,7 +81,28 @@ const store = {
   },
 };
 
-const SPAWN = { x: 0, z: -150, yaw: -Math.PI / 2 };
+// The map is picked before the world is built (switching maps reloads the
+// page), so every module sees the same islands, surf and spawn point.
+const MAP = applyMap(mapById(params.get('map') || store.get('map', 'bay')));
+const SPAWN = MAP.spawn;
+{
+  const t = document.getElementById('loadText');
+  if (t) t.textContent = MAP.load;
+}
+
+// The storm map's weather: greyer light, darker water, less sun.
+function moodify(t, m) {
+  for (const k of ['sun', 'zenith', 'horizon', 'glow', 'cloudLit', 'cloudShade']) {
+    const c = t[k];
+    const l = c[0] * 0.3 + c[1] * 0.55 + c[2] * 0.15;
+    const dk = k === 'sun' ? 1 : m.dark;
+    for (let j = 0; j < 3; j++) c[j] = (c[j] + (l - c[j]) * m.grey) * dk;
+  }
+  for (const k of ['deep', 'shallow']) for (let j = 0; j < 3; j++) t[k][j] *= m.water[j];
+  t.sunPower *= m.sun;
+  t.exposure *= m.exposure;
+  t.ambient *= 0.85;
+}
 
 // Xbox button glyph for hints
 const PB_LABEL = { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', LT: 'LT', RT: 'RT', LS: 'LS', RS: 'RS', VIEW: 'VIEW', MENU: 'MENU', UP: '▲', DOWN: '▼', LEFT: '◀', RIGHT: '▶' };
@@ -116,15 +142,7 @@ class Game {
     this.waves = new Waves();
     this.terrain = new Terrain();
     this.world = new World(this.waves, this.terrain);
-    for (const r of [
-      [0, 40, -Math.PI / 2],
-      [-190, 250, -Math.PI / 2 - 0.9],
-      [270, -70, 0.4],
-      [430, 320, 2.5],
-      [-420, -20, Math.PI * 0.8],
-    ]) {
-      this.world.addRamp(r[0], r[1], r[2]);
-    }
+    for (const r of MAP.ramps) this.world.addRamp(r[0], r[1], r[2]);
 
     this.noiseTex = makeNoiseTexture();
     this.normalTex = makeWaterNormalTexture();
@@ -155,11 +173,26 @@ class Game {
 
     this.terrainMesh = buildTerrainMesh(this.terrain);
     this.scene.add(this.terrainMesh);
-    this.scene.add(buildVegetation(this.terrain));
+    this.scene.add(buildVegetation(this.terrain, MAP.veg));
     for (const r of this.world.ramps) this.scene.add(buildRampMesh(this.world, r));
     this.buoys = new Buoys(this.world, this.makeBuoyList());
     this.scene.add(this.buoys.group);
     this.scene.add(buildZoneArch(ZONE_IN.x + ZONE_IN.hx * 30, ZONE_IN.z + ZONE_IN.hz * 30, ZONE_IN.yaw));
+    // the map's buoy race
+    this.race = new Race(this.world, MAP.race);
+    this.race.onEvent = (kind, d) => this.onRace(kind, d);
+    this.scene.add(this.race.group);
+    // weather
+    if (MAP.mood) {
+      this.sky.uniforms.uCloudCover.value = MAP.mood.cloud;
+      this.scene.fog.density = 1 / MAP.mood.fog;
+      if (MAP.mood.rain) {
+        this.rain = new Rain();
+        this.scene.add(this.rain.mesh);
+      }
+      this.boltT = 6 + Math.random() * 10;
+      this.bolt = 0;
+    }
 
     this.spray = new Spray({ max: coarse ? 11000 : 30000, noiseTex: this.noiseTex });
     this.spray.uniforms.uSunDir = this.sky.uniforms.uSunDir;
@@ -170,10 +203,21 @@ class Game {
     this.breakers.camPos = this.camera.position;
 
     // --- player ------------------------------------------------------------
-    this.skiIndex = clamp(parseInt(store.get('ski', '0'), 10) || 0, 0, SKIS.length - 1);
-    if (params.get('ski')) this.skiIndex = Math.max(0, SKIS.findIndex((s) => s.id === params.get('ski')));
+    // your progress: cash, skis owned, kits, missions, race times
+    this.mapId = MAP.id;
+    this.map = MAP;
+    this.career = new Career();
+    this.career.onChange = () => this.refreshCareerUi();
+    // the garage in price order
+    this.order = SKIS.map((s, i) => i).sort((a, b) => (SKIS[a].price || 0) - (SKIS[b].price || 0));
+    // the last ski you rode, if you own it (?ski= picks any, for testing)
+    const oldIdx = parseInt(store.get('ski', '-1'), 10);
+    const want = params.get('ski') || store.get('ski-id', SKIS[oldIdx] ? SKIS[oldIdx].id : START_SKI);
+    let idx = SKIS.findIndex((s) => s.id === want);
+    if (idx < 0 || (!params.get('ski') && !this.career.owns(SKIS[idx].id))) idx = SKIS.findIndex((s) => s.id === START_SKI);
+    this.skiIndex = idx;
     this.cwIndex = {};
-    this.spec = SKIS[this.skiIndex];
+    this.spec = this.tuned(SKIS[this.skiIndex]);
     this.phys = new SkiPhysics(this.spec, this.world);
     this.effects = new SkiEffects(this.spray, this.foam, this.world);
     // the jet as a real stream of water, and the wash it throws up when the
@@ -187,9 +231,15 @@ class Game {
     this.input = new Input($('touch'));
     this.audio = new Audio();
     this.buildSki();
-    this.tricks = new Tricks((label, pts, kind, combo) => {
-      this.popTrick(label, pts, kind);
+    this.tricks = new Tricks((label, pts, kind, combo, info) => {
+      this.popTrick(label, pts, kind, this.earnTrick(pts, kind, info));
       if (kind !== 'note' && this.mp) this.mp.noteTrick(label, pts);
+      this.missionEvent('trick', label);
+      if (kind !== 'note') {
+        this.missionEvent('combo', combo);
+        this.missionEvent('score', this.tricks.score);
+        if (info && info.air) this.missionEvent('air', info.air);
+      }
     });
     this.wetLens = new WetLens(document.body);
     this.mp = new Multiplayer(this);
@@ -201,6 +251,7 @@ class Game {
     };
     this.tricks.zoneAt = (x, z) => this.waves.zoneMask(x, z);
     this.tricks.barrelAt = (x, z) => this.waves.surf.barrelAt(x, z, this.phys.time);
+    this.tricks.rampAt = (x, z) => this.world.ramps.some((r) => Math.hypot(r.x - x, r.z - z) < 30);
     this.inZone = false;
 
     // --- state ---------------------------------------------------------------
@@ -208,8 +259,8 @@ class Game {
     this.hasRidden = false;
     // The time of day and the water belong to the shared world (the admin
     // sets them, the same for everyone); ?sea= and ?tod= pin them for testing.
-    this.seaFixed = params.get('sea') !== null;
-    this.seaIndex = this.seaFixed ? clamp(parseInt(params.get('sea'), 10) || 0, 0, SEA_STATES.length - 1) : this.mp.world.sea;
+    this.seaFixed = params.get('sea') !== null || MAP.sea != null;
+    this.seaIndex = params.get('sea') !== null ? clamp(parseInt(params.get('sea'), 10) || 0, 0, SEA_STATES.length - 1) : MAP.sea != null ? MAP.sea : this.mp.world.sea;
     this.fixedPhase = params.get('tod') !== null ? PRESET_PHASE[TIMES[clamp(parseInt(params.get('tod'), 10) || 0, 0, TIMES.length - 1)].id] : null;
     this.camMode = 0;
     let fpsOn = true;
@@ -260,8 +311,8 @@ class Game {
     const list = [];
     const red = 0xe53935;
     const yel = 0xffc81f;
-    // slalom from the start to the first ramp
-    for (let i = 0; i < 6; i++) list.push({ x: (i % 2 ? 7 : -7), z: -120 + i * 24, color: i % 2 ? red : yel });
+    // slalom from the start to the first ramp (Palm Bay)
+    if (MAP.slalom) for (let i = 0; i < 6; i++) list.push({ x: (i % 2 ? 7 : -7), z: -120 + i * 24, color: i % 2 ? red : yel });
     // ramp approach gates
     for (const r of this.world.ramps) {
       for (const s of [-1, 1]) {
@@ -271,7 +322,7 @@ class Game {
       }
     }
     // a wide slalom arc in the lagoon
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < (MAP.slalom ? 14 : 0); i++) {
       const a = -0.6 + i * 0.26;
       const rad = 210 + (i % 2) * 22;
       const x = 60 + Math.cos(a) * rad;
@@ -319,13 +370,171 @@ class Game {
     });
   }
 
+  // a ski with whatever TRIM-X kit you have fitted to it
+  tuned(spec) {
+    return tunedSpec(spec, this.career.trimx(spec));
+  }
+
   selectSki(i) {
     this.skiIndex = (i + SKIS.length) % SKIS.length;
-    this.spec = SKIS[this.skiIndex];
-    store.set('ski', this.skiIndex);
+    this.spec = this.tuned(SKIS[this.skiIndex]);
+    if (this.career.owns(this.spec.id)) store.set('ski-id', this.spec.id);
     this.buildSki();
     this.phys.trim = 0;
     this.refreshMenu();
+  }
+
+  // step through the garage in price order
+  stepSki(d) {
+    const k = this.order.indexOf(this.skiIndex);
+    this.selectSki(this.order[(k + d + this.order.length) % this.order.length]);
+  }
+
+  buySki() {
+    const spec = SKIS[this.skiIndex];
+    const r = this.career.buy(spec);
+    if (r === 'poor') return this.toast('NOT YET', 'You need ' + money(spec.price - this.career.cash) + ' more for the ' + spec.name, 0);
+    if (r !== 'ok') return;
+    store.set('ski-id', spec.id);
+    this.audio.cash?.();
+    this.toast('NEW SKI', spec.name + ' is yours!', 0);
+    this.missionEvent('owned', this.career.data.owned.length);
+    this.refreshMenu();
+  }
+
+  buyTrimx() {
+    const base = SKIS[this.skiIndex];
+    const cur = this.career.trimx(base);
+    const next = TRIMX[cur + 1];
+    const r = this.career.buyTrimx(base);
+    if (r === 'poor') return this.toast('NOT YET', 'You need ' + money(next.price - this.career.cash) + ' more for ' + next.name, 0);
+    if (r !== 'ok') return;
+    this.spec = this.tuned(base);
+    this.buildSki();
+    this.toast('FITTED', TRIMX[cur + 1].name + ' on the ' + base.name, 0);
+    this.missionEvent('trimx', 1);
+    this.refreshMenu();
+  }
+
+  // ------------------------------------------------------------- money
+  // Storm Coast's danger pay doubles up everything except missions
+  mapMult() {
+    return MAP.bonus.id === 'all' ? 1.5 : 1;
+  }
+
+  // a trick's points turn into cash (with the map's bonus where it applies)
+  earnTrick(pts, kind, info = {}) {
+    if (kind === 'note' || !(pts > 0)) return null;
+    const b = MAP.bonus.id;
+    let mult = 1;
+    if ((b === 'ramp' && info.ramp) || (b === 'wave' && info.wave) || (b === 'flat' && (info.water || info.flat))) mult = 2;
+    else if (b === 'all') mult = 1.5;
+    const cash = this.career.earn(pts * CASH_PER_POINT * mult + (info.spray ? SPRAY_PAY * this.mapMult() : 0));
+    return { cash, mult };
+  }
+
+  missionEvent(ev, v) {
+    const done = checkMissions(this.career, ev, v);
+    for (const m of done) {
+      this.career.earn(m.pay);
+      this.toast('MISSION COMPLETE', m.text, m.pay);
+    }
+  }
+
+  // a message across the top: missions, purchases, race results
+  toast(title, text, pay) {
+    const q = this.toastQ || (this.toastQ = []);
+    q.push({ title, text, pay });
+    if (q.length === 1) this.nextToast();
+  }
+
+  nextToast() {
+    const q = this.toastQ;
+    const el = $('toast');
+    if (!q.length) {
+      el.classList.remove('show');
+      return;
+    }
+    const t = q[0];
+    el.innerHTML = '';
+    const b = document.createElement('b');
+    b.textContent = t.title;
+    const sp = document.createElement('span');
+    sp.textContent = t.text;
+    el.append(b, sp);
+    if (t.pay) {
+      const i = document.createElement('i');
+      i.textContent = '+' + money(t.pay);
+      el.append(i);
+    }
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    setTimeout(() => {
+      q.shift();
+      this.nextToast();
+    }, 3200);
+  }
+
+  refreshCareerUi() {
+    const c = money(this.career.cash);
+    $('wallet').textContent = c;
+    if (this.ui) this.ui.cash.textContent = c;
+    if (this.state === 'menu') this.refreshMenu();
+  }
+
+  // ------------------------------------------------------------- races
+  onRace(kind, d) {
+    const race = MAP.race;
+    if (kind === 'start') {
+      this.banner('GO!', 1.1);
+      this.showHint('<b>' + race.name + '</b>: take every gate in order (follow the green marker), then back through the start.', 4);
+      this.input.rumble(0.3, 0.6, 120);
+    } else if (kind === 'gate') {
+      this.audio.tick?.();
+    } else if (kind === 'finish') {
+      const best = this.career.finishRace(MAP.id, d.time, d.medal);
+      const pay = Math.round((d.medal >= 0 ? RACE_PAY[d.medal] : 150) * this.mapMult());
+      this.career.earn(pay);
+      const medal = ['BRONZE', 'SILVER', 'GOLD'][d.medal] || 'FINISHED';
+      this.banner(medal + ' · ' + clock(d.time), 2.6);
+      this.toast(race.name.toUpperCase(), medal.charAt(0) + medal.slice(1).toLowerCase() + ' in ' + clock(d.time) + (best ? ' · new best!' : ''), pay);
+      this.missionEvent('race', d.medal);
+      this.missionEvent('golds', Object.values(this.career.data.races).filter((r) => r.medal === 2).length);
+    } else if (kind === 'cancel') {
+      this.showHint('Race cancelled. Ride back through the start gate to try again.', 3);
+    }
+  }
+
+  updateRaceHud() {
+    const r = this.race;
+    const el = this.ui.race;
+    const p = this.phys;
+    const g0 = r.gates[0];
+    const near = Math.hypot(g0.x - p.px, g0.z - p.pz) < 260;
+    const show = this.state === 'ride' && !this.wipe.on && (r.state === 'run' || near);
+    if (el.hidden === show) el.hidden = !show;
+    if (!show) return;
+    const n = r.gates.length;
+    const best = this.career.race(MAP.id);
+    const txt = r.state === 'run' ? clock(r.t) : 'START';
+    if (this.uiCache.raceT !== txt) {
+      this.uiCache.raceT = txt;
+      this.ui.raceTime.textContent = txt;
+    }
+    const sub = r.state === 'run' ? (r.next % n === 0 ? 'FINISH' : 'GATE ' + r.next + ' / ' + (n - 1)) : 'Ride through the chequered gate';
+    if (this.uiCache.raceSub !== sub) {
+      this.uiCache.raceSub = sub;
+      this.ui.raceSub.textContent = sub;
+      const m = MAP.race.medals;
+      this.ui.raceGoal.textContent = 'Gold ' + clock(m[2]) + ' · Silver ' + clock(m[1]) + ' · Bronze ' + clock(m[0]) + (best ? ' · Best ' + clock(best.best) : '');
+    }
+    // arrow to the next gate
+    const tg = r.target();
+    const dx = tg.x - p.px, dz = tg.z - p.pz;
+    this.camera.getWorldDirection(this._v);
+    const ang = Math.atan2(dx * this._v.z - dz * this._v.x, dx * this._v.x + dz * this._v.z);
+    this.ui.raceArrow.style.transform = `rotate(${(ang * 180) / Math.PI}deg)`;
   }
 
   syncSki() {
@@ -357,6 +566,11 @@ class Game {
   // the sky reflections are re-baked only every few seconds.
   applyTime(force = false) {
     const tod = todAt(this.dayPhase(), this._tod || (this._tod = {}));
+    if (MAP.mood) moodify(tod, MAP.mood);
+    if (this.bolt > 0.01) {
+      tod.exposure *= 1 + this.bolt * 1.6;
+      tod.ambient *= 1 + this.bolt * 2.5;
+    }
     this.sky.setTime(tod);
     this.ocean.setTime(tod);
     this.spray.setLight(tod);
@@ -513,6 +727,10 @@ class Game {
       if (this.state === 'ride') this.teleport('zone');
       say('everyone is off to the wave zone.');
     });
+    $('admCash').addEventListener('click', () => {
+      this.career.earn(10000);
+      $('admStatus').textContent = 'Added $10,000 to your wallet (just you).';
+    });
     $('admReset').addEventListener('click', () => {
       mp.setWorld({ sea: 1, day: null, fun: Object.fromEntries(FUN.map((f) => [f.id, false])), huge: null });
       say('world back to normal.');
@@ -556,14 +774,31 @@ class Game {
   // ---------------------------------------------------------------- UI
   setupUI() {
     const list = $('skiList');
-    SKIS.forEach((s, i) => {
+    for (const i of this.order) {
+      const s = SKIS[i];
       const b = document.createElement('button');
       b.className = 'ski-opt';
+      b.dataset.i = i;
       b.setAttribute('role', 'option');
-      b.innerHTML = `${s.name}<small>${s.tagline.split('·')[1].trim()}</small>`;
+      const hp = document.createElement('small');
+      hp.textContent = s.tagline.split('·').pop().trim();
+      const pr = document.createElement('em');
+      pr.className = 'price';
+      b.append(s.name, hp, pr);
       b.addEventListener('click', () => this.selectSki(i));
       list.appendChild(b);
+    }
+    $('btnBuy').addEventListener('click', () => this.buySki());
+    $('btnTrimx').addEventListener('click', () => this.buyTrimx());
+    // maps (switching rebuilds the world: the page reloads into the new map)
+    MAPS.forEach((m) => {
+      const b = document.createElement('button');
+      b.textContent = m.name.split(' ').map((w) => w[0] + w.slice(1).toLowerCase()).join(' ');
+      b.dataset.map = m.id;
+      b.addEventListener('click', () => this.switchMap(m.id));
+      $('segMap').appendChild(b);
     });
+    this.buildMissionList();
     const seg = (el, items, get, set) => {
       items.forEach((it, i) => {
         const b = document.createElement('button');
@@ -577,9 +812,9 @@ class Game {
       el._get = get;
     };
     this.spotIndex = 0;
-    seg($('segSpot'), [{ name: 'Lagoon' }, { name: 'Wave zone' }], () => this.spotIndex, (i) => {
+    seg($('segSpot'), [{ name: 'Lagoon' }, { name: 'Wave zone' }, { name: 'Race start' }], () => this.spotIndex, (i) => {
       this.spotIndex = i;
-      this.teleport(i === 1 ? 'zone' : 'lagoon');
+      this.teleport(['lagoon', 'zone', 'race'][i]);
     });
     this.setupAdmin(seg);
     const bars = $('vtsBars');
@@ -618,16 +853,113 @@ class Game {
     this.refreshMenu();
     this.ui = {
       speed: $('speed'), rpmFill: $('rpmFill'), rpmVal: $('rpmVal'), trimVal: $('trimVal'), pumpVal: $('pumpVal'), modeVal: $('modeVal'), boostVal: $('boostVal'),
-      score: $('score'), best: $('best'), live: $('live'), liveName: $('liveName'), livePts: $('livePts'), combo: $('combo'), pops: $('pops'),
+      score: $('score'), best: $('best'), cash: $('cash'), live: $('live'),
+      race: $('race'), raceTime: $('raceTime'), raceSub: $('raceSub'), raceGoal: $('raceGoal'), raceArrow: $('raceArrow'), liveName: $('liveName'), livePts: $('livePts'), combo: $('combo'), pops: $('pops'),
       banner: $('banner'), hint: $('hint'), flash: $('flash'),
       zoneDir: $('zoneDir'), zoneArrow: $('zoneArrow'), zoneDist: $('zoneDist'), zoneLbl: $('zoneLbl'), zoneKeyTip: $('zoneKey'),
     };
     this.uiCache = {};
+    this.career.visit(MAP.id);
+    this.missionEvent('maps', Object.keys(this.career.data.stats.maps).length);
+    this.missionEvent('owned', this.career.data.owned.length);
+    this.refreshCareerUi();
+  }
+
+  switchMap(id) {
+    if (id === MAP.id) return;
+    store.set('map', id);
+    $('loadText').textContent = mapById(id).load;
+    $('loading').classList.remove('done');
+    $('menu').hidden = true;
+    setTimeout(() => {
+      if (params.has('map')) {
+        params.set('map', id);
+        location.search = params.toString();
+      } else location.reload();
+    }, 60);
+  }
+
+  buildMissionList() {
+    const ol = $('missionList');
+    ol.textContent = '';
+    this.missionEls = MISSIONS.map((m) => {
+      const li = document.createElement('li');
+      const t = document.createElement('span');
+      t.textContent = m.text;
+      const p = document.createElement('b');
+      p.textContent = money(m.pay);
+      li.append(t, p);
+      ol.appendChild(li);
+      return li;
+    });
   }
 
   refreshMenu() {
     const s = this.spec;
-    [...$('skiList').children].forEach((b, i) => b.setAttribute('aria-selected', i === this.skiIndex ? 'true' : 'false'));
+    const C = this.career;
+    for (const b of $('skiList').children) {
+      const i = +b.dataset.i;
+      const sk = SKIS[i];
+      const own = C.owns(sk.id);
+      b.setAttribute('aria-selected', i === this.skiIndex ? 'true' : 'false');
+      b.classList.toggle('locked', !own);
+      const pr = b.querySelector('.price');
+      const t = own ? 'OWNED' : money(sk.price);
+      if (pr.textContent !== t) pr.textContent = t;
+      pr.classList.toggle('owned', own);
+    }
+    // buy / owned
+    const own = C.owns(s.id) || !!params.get('ski');
+    $('buyRow').hidden = own;
+    if (!own) {
+      $('btnBuy').textContent = 'BUY ' + money(s.price);
+      const short = s.price - C.cash;
+      $('btnBuy').disabled = short > 0;
+      $('buyNote').textContent = short > 0 ? money(short) + ' more to go' : 'You can afford it!';
+    }
+    // TRIM-X
+    const base = SKIS[this.skiIndex];
+    const tb = trimxBase(base);
+    $('trimxRow').hidden = tb < 0;
+    if (tb >= 0) {
+      const cur = C.trimx(base);
+      $('trimxVal').textContent = cur === 0 ? 'Stock trim' : TRIMX[cur].name.replace('TRIM-X ', '') + (cur === tb && tb > 0 ? ' (built in)' : '');
+      const next = TRIMX[cur + 1];
+      const btn = $('btnTrimx');
+      btn.hidden = !next || !own;
+      if (next) {
+        btn.textContent = (cur === 0 ? 'STAGE 1 ' : 'STAGE 2 ') + money(next.price);
+        btn.disabled = next.price > C.cash;
+        btn.title = cur === 0 ? 'More trim range for a proper rooster tail' : 'Even more trim for a massive rooster tail';
+      }
+    }
+    $('btnRide').disabled = !own;
+    // map
+    for (const b of $('segMap').children) b.setAttribute('aria-pressed', b.dataset.map === MAP.id ? 'true' : 'false');
+    const rb = C.race(MAP.id);
+    const medal = rb ? ['', ' (bronze)', ' (silver)', ' (gold)'][rb.medal + 1] : '';
+    $('mapInfo').innerHTML = '';
+    {
+      const a = document.createElement('span');
+      a.textContent = MAP.blurb;
+      const b = document.createElement('span');
+      b.className = 'map-meta';
+      b.textContent = 'Waves: ' + MAP.waves + ' · Race: ' + MAP.race.name + (rb ? ' · best ' + clock(rb.best) + medal : '');
+      const c = document.createElement('b');
+      c.className = 'map-bonus';
+      c.textContent = 'BONUS: ' + MAP.bonus.text;
+      $('mapInfo').append(a, b, c);
+    }
+    // missions: done ones ticked and moved to the end
+    let nDone = 0;
+    MISSIONS.forEach((m, i) => {
+      const done = C.done(m.id);
+      if (done) nDone++;
+      this.missionEls[i].classList.toggle('done', done);
+      this.missionEls[i].style.order = done ? 100 + i : i;
+    });
+    $('missionCount').textContent = nDone + ' / ' + MISSIONS.length + ' done';
+    $('wallet').textContent = money(C.cash);
     $('mName').textContent = s.name;
     $('mTag').textContent = s.tagline;
     $('mBlurb').textContent = s.blurb;
@@ -674,7 +1006,11 @@ class Game {
       cols.appendChild(b);
     });
     $('mColorName').textContent = s.colorways[cwI].name;
-    if (this.spotIndex !== undefined) this.spotIndex = this.waves.zoneMask(this.phys.px, this.phys.pz) > 0.05 || Math.hypot(this.phys.px - ZONE_IN.x, this.phys.pz - ZONE_IN.z) < 200 ? 1 : 0;
+    if (this.spotIndex !== undefined) {
+      const rs = this.race.startSpot();
+      const p = this.phys;
+      this.spotIndex = this.waves.zoneMask(p.px, p.pz) > 0.05 || Math.hypot(p.px - ZONE_IN.x, p.pz - ZONE_IN.z) < 200 ? 1 : Math.hypot(p.px - rs.x, p.pz - rs.z) < 60 ? 2 : 0;
+    }
     for (const id of ['segSpot', 'admSea']) {
       const el = $(id);
       [...el.children].forEach((b, i) => b.setAttribute('aria-pressed', i === el._get() ? 'true' : 'false'));
@@ -683,6 +1019,10 @@ class Game {
   }
 
   ride() {
+    if (!this.career.owns(this.spec.id) && !params.get('ski')) {
+      this.toast('LOCKED', 'That ski is not yours yet. Buy it, or pick one you own.', 0);
+      return;
+    }
     this.state = 'ride';
     this.hasRidden = true;
     $('menu').hidden = true;
@@ -756,7 +1096,7 @@ class Game {
     const p = this.phys;
     const now = performance.now();
     for (const r of mp.remotes.values()) {
-      if (!r.jet || !r.state) continue;
+      if (!r.jet || !r.state || !r.group.visible) continue;
       const theirs = r.jet.hits(p.px, p.py + 0.9, p.pz, 0.7) + 0.4 * r.wash.hits(p.px, p.py + 0.5, p.pz, 0.7);
       if (theirs > 0.8) {
         const k = Math.min(1, theirs / 6);
@@ -771,9 +1111,12 @@ class Game {
       const mine = this.effects.jet.hits(r.pos.x, r.pos.y + 0.9, r.pos.z, 0.7) + 0.4 * this.effects.wash.hits(r.pos.x, r.pos.y + 0.5, r.pos.z, 0.7);
       if (mine > 0.8) {
         this.splashAt(r.pos.x, r.pos.y + 0.9, r.pos.z, Math.min(1, mine / 6), p.tele.nozzleVel);
-        if (now - (r.hitThemT || -1e9) > 3000) {
+        if (now - (r.hitThemT || -1e9) > 5000) {
           r.hitThemT = now;
-          this.tricks.award('SPRAYED ' + plain(r.name).toUpperCase(), 150);
+          // a bounty for hosing them (pays out with the trick)
+          this.tricks.award('SPRAYED ' + plain(r.name).toUpperCase(), 150, 'trick', { spray: true });
+          this.career.spray();
+          this.missionEvent('spray', this.career.data.stats.sprays);
         }
       }
     }
@@ -941,10 +1284,21 @@ class Game {
     this.hintTimer = secs;
   }
 
-  popTrick(label, pts, kind) {
+  popTrick(label, pts, kind, earned) {
     const el = document.createElement('div');
     el.className = 'pop' + (kind === 'note' ? ' note' : '');
-    el.innerHTML = kind === 'note' ? label : `${label}<b>+${pts.toLocaleString()}</b>`;
+    el.textContent = label;
+    if (kind !== 'note') {
+      const b = document.createElement('b');
+      b.textContent = '+' + pts.toLocaleString();
+      el.appendChild(b);
+      if (earned && earned.cash) {
+        const c = document.createElement('i');
+        c.className = 'cash';
+        c.textContent = '+' + money(earned.cash) + (earned.mult > 1 ? ' · ' + earned.mult + 'x' : '');
+        el.appendChild(c);
+      }
+    }
     const pops = this.ui.pops;
     while (pops.children.length > 2) pops.firstChild.remove();
     for (const c of pops.children) c.style.marginTop = (parseFloat(c.style.marginTop || '0') + 44) + 'px';
@@ -1049,6 +1403,7 @@ class Game {
       yaw = this.safe.yaw;
     }
     p.reset(x, z, yaw);
+    this.race.jumped();
     w.on = false;
     w.splashed = false;
     this.rider.ragdoll = false;
@@ -1348,8 +1703,8 @@ class Game {
         this.showHint(this.inZone ? 'Back to the lagoon' : 'Wave zone. Ride into the swell flat out.', 2.2);
       }
     } else if (this.state === 'menu') {
-      if (inp.was('ArrowRight') && !this.padFocusEl) this.selectSki(this.skiIndex + 1);
-      if (inp.was('ArrowLeft') && !this.padFocusEl) this.selectSki(this.skiIndex - 1);
+      if (inp.was('ArrowRight') && !this.padFocusEl) this.stepSki(1);
+      if (inp.was('ArrowLeft') && !this.padFocusEl) this.stepSki(-1);
     }
     this.handlePad();
   }
@@ -1385,8 +1740,8 @@ class Game {
       if (helpOpen) $('help').hidden = true;
       else this.ride();
     }
-    if (!helpOpen && inp.padWas(PAD.RB)) this.selectSki(this.skiIndex + 1);
-    if (!helpOpen && inp.padWas(PAD.LB)) this.selectSki(this.skiIndex - 1);
+    if (!helpOpen && inp.padWas(PAD.RB)) this.stepSki(1);
+    if (!helpOpen && inp.padWas(PAD.LB)) this.stepSki(-1);
     if (!helpOpen && inp.padWas(PAD.Y)) $('help').hidden = false;
   }
 
@@ -1616,6 +1971,19 @@ class Game {
     this.audio.surfLevel = this.breakers.roar;
     this.foam.update(p.px + p.vx * 0.8, p.pz + p.vz * 0.8, dt);
     this.buoys.update(dt, time, p);
+    this.race.update(dt, time, p, this.state === 'ride' && !this.wipe.on);
+    if (this.rain) this.rain.update(dt, this.camera.position);
+    if (this.boltT !== undefined) {
+      // lightning: a double flash every so often
+      this.boltT -= dt;
+      if (this.boltT <= 0) {
+        this.boltT = 7 + Math.random() * 16;
+        this.bolt = 1;
+        this.bolt2 = 0.14;
+      }
+      if (this.bolt2 > 0 && (this.bolt2 -= dt) <= 0) this.bolt = 0.8;
+      this.bolt *= Math.exp(-dt * 9);
+    }
 
     // --- rules -------------------------------------------------------------
     if (this.state === 'ride') {
@@ -1624,6 +1992,11 @@ class Game {
       else {
         this.tricks.update(dt, p);
         this.checkWipeout(dt);
+        this.missionT = (this.missionT || 0) - dt;
+        if (this.missionT <= 0) {
+          this.missionT = 0.25;
+          this.missionEvent('speed', T.speed * 3.6);
+        }
         if (T.trickTry) this.trickTryHint();
         // remember a safe spot to reset to
         this.safe.t += dt;
@@ -1668,7 +2041,10 @@ class Game {
     if (this.state === 'ride' && !this.wipe.on) this.sprayHits(dt);
     this.wetLens.update(dt);
     this.mp.tags(this.camera);
-    if (this.state === 'ride') this.updateHUD(dt);
+    if (this.state === 'ride') {
+      this.updateHUD(dt);
+      this.updateRaceHud();
+    } else if (!this.ui.race.hidden) this.ui.race.hidden = true;
     this.audio.update(T, p.ctrl, this.effects.sprayLevel, this.state !== 'ride', dt);
     // controller rumble follows the engine; hits and landings jolt it
     const rumbling = this.state === 'ride' && !this.wipe.on;
@@ -1687,7 +2063,8 @@ class Game {
 
   // ----------------------------------------------------------- wave zone
   teleport(where) {
-    const spot = where === 'zone' ? ZONE_IN : SPAWN;
+    const spot = where === 'zone' ? ZONE_IN : where === 'race' ? this.race.startSpot() : SPAWN;
+    this.race.cancel(true);
     this.phys.time = this.mp.worldTime() - 0.5;
     this.phys.reset(spot.x, spot.z, spot.yaw);
     this.phys.trim = 0;
@@ -1703,6 +2080,8 @@ class Game {
     this.syncSki();
     this.snapCamera();
     this.cam.orbit = this.cam.yaw + 0.5;
+    this.race.jumped();
+    if (where === 'race' && this.state === 'ride') this.showHint('<b>' + MAP.race.name + '</b>: ride through the chequered start gate ahead to start the clock.', 4);
   }
 
   updateZone() {

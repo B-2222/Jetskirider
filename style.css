@@ -10,6 +10,7 @@
   --accent: #d8ff2f;
   --accent-ink: #07131a;
   --danger: #ff5340;
+  --cash: #ffd54a;
   --display: 'Saira Extra Condensed', 'Arial Narrow', 'Roboto Condensed', Impact, sans-serif;
   --text: 'Saira', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
   color-scheme: dark;
@@ -73,6 +74,28 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 .pops { position: relative; height: 0; width: 100%; }
 .pop { position: absolute; left: 50%; top: 6px; white-space: nowrap; font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(24px, 4.4vw, 40px); text-shadow: 0 3px 14px rgba(0, 0, 0, 0.6); animation: pop 2.1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
 .pop b { color: var(--accent); font-weight: 900; margin-left: 10px; }
+.pop i.cash { display: block; font-size: 0.55em; font-style: normal; font-weight: 800; color: var(--cash); letter-spacing: 0.04em; }
+.score-row.cash-row .val { font-size: 22px; color: var(--cash); }
+
+/* race timer, under the wave-zone marker */
+.race-hud { position: absolute; left: 50%; top: max(56px, calc(env(safe-area-inset-top, 0px) + 50px)); transform: translateX(-50%); display: grid; grid-template-columns: auto auto; align-items: center; gap: 2px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 14px 6px 12px; text-shadow: none; }
+.race-arrow { grid-row: span 2; width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 20px solid #39ff6a; transition: transform 0.1s linear; }
+.race-main { display: flex; align-items: baseline; gap: 10px; }
+.race-main b { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+.race-main span { font-family: var(--display); font-weight: 700; letter-spacing: 0.1em; font-size: 14px; color: #39ff6a; }
+.race-goal { font-size: 11px; color: var(--mist); white-space: nowrap; }
+
+/* missions, purchases, results: a banner that drops in at the top */
+.toast { position: fixed; left: 50%; top: max(10px, env(safe-area-inset-top, 0px)); z-index: 30; transform: translate(-50%, -140%); display: flex; align-items: baseline; gap: 10px; max-width: calc(100vw - 32px); background: var(--panel-solid); border: 1px solid var(--cash); border-radius: 6px; padding: 8px 14px 7px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); pointer-events: none; opacity: 0; }
+.toast.show { animation: toastIn 3.1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.toast b { font-family: var(--display); font-weight: 800; letter-spacing: 0.12em; font-size: 14px; color: var(--cash); white-space: nowrap; }
+.toast span { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.toast i { font-family: var(--display); font-style: normal; font-weight: 900; font-size: 20px; color: var(--cash); white-space: nowrap; }
+@keyframes toastIn {
+  0% { transform: translate(-50%, -140%); opacity: 0; }
+  10%, 86% { transform: translate(-50%, 0); opacity: 1; }
+  100% { transform: translate(-50%, -140%); opacity: 0; }
+}
 @keyframes pop {
   0% { transform: translate(-50%, 14px) scale(0.7); opacity: 0; }
   12% { transform: translate(-50%, 0) scale(1.08); opacity: 1; }
@@ -134,6 +157,30 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 #menu { position: absolute; inset: 0; display: flex; background: linear-gradient(90deg, rgba(4, 18, 26, 0.86) 0, rgba(4, 18, 26, 0.6) 34%, rgba(4, 18, 26, 0) 62%); overflow-y: auto; }
 .menu-panel { width: min(100%, 520px); min-height: 100%; display: flex; flex-direction: column; gap: 16px; padding-block: max(22px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-bottom, 0px)); padding-left: max(22px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .menu-head h1 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(54px, 9.5vw, 92px); line-height: 0.84; margin: 0; letter-spacing: 0.005em; text-wrap: balance; }
+.wallet { display: inline-flex; align-items: baseline; gap: 10px; margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 5px 12px 3px; }
+.wallet b { font-family: var(--display); font-weight: 900; font-style: italic; font-size: 28px; line-height: 1; color: var(--cash); font-variant-numeric: tabular-nums; }
+.maps { display: grid; gap: 8px; }
+.map-info { margin: 0; display: grid; gap: 4px; line-height: 1.4; max-width: 56ch; }
+.map-meta { color: var(--mist); font-size: 13px; }
+.map-bonus { font-family: var(--display); font-weight: 700; letter-spacing: 0.08em; font-size: 14px; color: var(--cash); }
+.ski-opt em.price { display: block; font-family: var(--text); font-style: normal; font-weight: 600; font-size: 11px; color: var(--cash); margin-top: 2px; }
+.ski-opt.locked { opacity: 0.82; }
+.ski-opt em.price.owned { color: var(--mist); letter-spacing: 0.08em; }
+.ski-opt[aria-selected="true"] em.price.owned { color: var(--accent-ink); }
+.ski-opt.locked[aria-selected="true"] em.price { color: var(--accent-ink); }
+.trimx button, .buy { background: transparent; border: 1px solid var(--cash); color: var(--cash); border-radius: 4px; padding: 6px 12px 5px; font-family: var(--display); font-weight: 800; letter-spacing: 0.08em; font-size: 15px; }
+.trimx button:hover:not(:disabled), .buy:hover:not(:disabled) { background: var(--cash); color: var(--abyss); }
+.trimx button:disabled, .buy:disabled, .go:disabled { opacity: 0.45; cursor: default; }
+.buy-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.buy { background: var(--cash); color: var(--abyss); font-size: 22px; font-style: italic; font-weight: 900; padding: 8px 22px 6px; transform: skewX(-10deg); }
+.buy-row span { color: var(--mist); font-size: 13px; }
+.missions { display: grid; gap: 8px; }
+.mission-list { list-style: none; margin: 0; padding: 0 6px 0 0; display: flex; flex-direction: column; gap: 3px; max-height: 172px; overflow-y: auto; }
+.mission-list li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 4px 8px; background: var(--panel); border-radius: 3px; }
+.mission-list li b { font-family: var(--display); font-weight: 800; color: var(--cash); font-variant-numeric: tabular-nums; }
+.mission-list li.done { color: var(--mist); background: transparent; }
+.mission-list li.done span::before { content: '✓ '; color: var(--accent); }
+.mission-list li.done b { opacity: 0.45; text-decoration: line-through; }
 .menu-head .tag { position: static; display: block; white-space: normal; text-shadow: none; will-change: auto; margin: 8px 0 0; color: var(--mist); letter-spacing: 0.04em; }
 .garage { display: grid; gap: 12px; }
 .ski-list { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -184,11 +231,17 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 
 @media (max-width: 720px), (max-height: 520px) {
   #menu { background: linear-gradient(180deg, rgba(4, 18, 26, 0.35) 0, rgba(4, 18, 26, 0.82) 38%); }
-  .menu-panel { width: 100%; justify-content: flex-end; }
+  /* sits at the bottom when it fits; when it is taller than the screen it
+     starts at the top and scrolls (justify-content: flex-end would push the
+     top out of reach) */
+  .menu-panel { width: 100%; }
+  .menu-panel > .menu-head { margin-top: auto; }
   .menu-head h1 { font-size: clamp(44px, 14vw, 72px); }
   .mini { display: none; }
   .hud-btns .icon-btn { padding: 9px 9px 8px; }
   .score-row.dim { display: none; }
+  .race-hud { top: max(104px, calc(env(safe-area-inset-top, 0px) + 98px)); }
+  .race-goal { display: none; }
 }
 @media (pointer: coarse) {
   .cluster { bottom: max(8px, env(safe-area-inset-bottom, 0px)); }

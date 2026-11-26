@@ -35,7 +35,8 @@ SURF.period = SURF.setN * SURF.gap + SURF.lull;
 SURF.life = (SURF.endS - SURF.spawnS) / SURF.c;
 
 // waves in a set build to the third and ease off again
-const SET_SHAPE = [0.92, 1.0, 1.07, 0.97];
+// (a map with a different number of waves per set replaces this in place)
+export const SET_SHAPE = [0.92, 1.0, 1.07, 0.97];
 
 function hash(k, s) {
   const x = Math.sin(k * 127.1 + s * 311.7) * 43758.5453;

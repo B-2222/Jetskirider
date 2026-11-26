@@ -8,6 +8,7 @@ export class Tricks {
     this.onEvent = onEvent; // (label, points, kind)
     this.zoneAt = null; // (x, z) -> 0..1 wave-zone strength
     this.barrelAt = null; // (x, z) -> 0..1 how deep inside a barrel
+    this.rampAt = null; // (x, z) -> taking off from a ramp?
     this.reset();
     this.best = 0;
     try {
@@ -30,11 +31,13 @@ export class Tricks {
     this.livePts = 0;
   }
 
-  award(label, pts, kind = 'trick') {
+  // info says where it happened (for the maps' cash bonuses and missions):
+  // air (seconds), wave, ramp, flat (flat-water pop), water (on the water)
+  award(label, pts, kind = 'trick', info = {}) {
     if (pts <= 0) return;
     const total = Math.round(pts * this.combo);
     this.score += total;
-    this.onEvent(label, total, kind, this.combo);
+    this.onEvent(label, total, kind, this.combo, info);
     this.combo = Math.min(this.combo + 1, 8);
     this.comboTimer = 4.5;
     if (this.score > this.best) {
@@ -112,7 +115,7 @@ export class Tricks {
             label = 'BIG SLIDE';
             bonus = 150;
           }
-          this.award(label, s.pts + bonus);
+          this.award(label, s.pts + bonus, 'trick', { water: true });
         }
       }
     }
@@ -140,7 +143,7 @@ export class Tricks {
       w.grace -= dt;
       if (w.grace <= 0) {
         w.on = false;
-        if (w.time > 0.6) this.award(w.max > 52 ? 'TAIL STAND' : 'WHEELIE', w.pts + (w.max > 52 ? 200 : 0));
+        if (w.time > 0.6) this.award(w.max > 52 ? 'TAIL STAND' : 'WHEELIE', w.pts + (w.max > 52 ? 200 : 0), 'trick', { water: true });
       }
     }
 
@@ -164,7 +167,7 @@ export class Tricks {
       br.grace -= dt;
       if (br.grace <= 0) {
         br.on = false;
-        if (br.time > 0.5) this.award(br.time > 2.2 ? 'DEEP BARREL' : 'BARREL', br.pts + (br.time > 2.2 ? 800 : 200));
+        if (br.time > 0.5) this.award(br.time > 2.2 ? 'DEEP BARREL' : 'BARREL', br.pts + (br.time > 2.2 ? 800 : 200), 'trick', { wave: true });
       }
     }
 
@@ -178,6 +181,7 @@ export class Tricks {
         a.maxH = 0;
         a.y0 = phys.py;
         a.wave = this.zoneAt ? this.zoneAt(phys.px, phys.pz) > 0.4 : false;
+        a.ramp = this.rampAt ? this.rampAt(phys.px, phys.pz) : false;
         a.sm = 0;
         a.flat = this.popPending;
         this.popPending = false;
@@ -237,9 +241,9 @@ export class Tricks {
         const clean = Math.abs(T.roll) < 0.25 && T.pitch > -0.2 && T.pitch < 0.45 && Math.abs(T.slip) < 0.35;
         if (clean && (parts.length || a.time > 1.0)) {
           pts *= 1.2;
-          this.onEvent('CLEAN LANDING', 0, 'note', this.combo);
+          this.onEvent('CLEAN LANDING', 0, 'note', this.combo, {});
         }
-        this.award(label, pts);
+        this.award(label, pts, 'trick', { air: a.time, wave: a.wave, ramp: a.ramp, flat: a.flat && parts.length > 0 });
       }
     }
   }
