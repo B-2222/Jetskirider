@@ -19,8 +19,9 @@ import { unlock, FUN } from './world.js';
 import { SURF } from './surf.js';
 import { MAPS, mapById, applyMap } from './maps.js';
 import { Career, START_SKI, CASH_PER_POINT, RACE_PAY, SPRAY_PAY, money } from './career.js';
+import { Accounts, authError } from './accounts.js';
 import { MISSIONS, checkMissions } from './missions.js';
-import { Race, clock } from './races.js';
+import { Race, clock, QUEUE_S } from './races.js';
 import { Rain } from './rain.js';
 
 // names come from other players: keep them out of anything read as HTML
@@ -208,6 +209,10 @@ class Game {
     this.map = MAP;
     this.career = new Career();
     this.career.onChange = () => this.refreshCareerUi();
+    // an email account keeps it (on the Firebase build)
+    this.accounts = new Accounts(this.career);
+    this.accounts.onChange = () => this.onAccount();
+    this.careerKey = this.career.key;
     // the garage in price order
     this.order = SKIS.map((s, i) => i).sort((a, b) => (SKIS[a].price || 0) - (SKIS[b].price || 0));
     // the last ski you rode, if you own it (?ski= picks any, for testing)
@@ -484,57 +489,224 @@ class Game {
   }
 
   // ------------------------------------------------------------- races
+  // Racing starts in the race circle: wait in it for QUEUE_S seconds and you
+  // (and any mates in it with you) go to the start grid. Everyone in the
+  // circle shares their arrival time (presence `rq`), so all their games
+  // agree on when the wait ends, who is racing and the grid order. During
+  // the race each rider shares their progress (`rr`) for live positions.
+  updateRaceQueue() {
+    const r = this.race;
+    const p = this.phys;
+    const now = this.mp.worldClock();
+    const free = this.state === 'ride' && !this.wipe.on && (r.state === 'idle' || r.state === 'done');
+    const inside = free && r.inCircle(p.px, p.pz);
+    if (inside && !this.raceQ) this.raceQ = { t: Math.round(now * 100) / 100 };
+    if (!inside && this.raceQ) this.raceQ = null;
+    if (!this.raceQ) {
+      r.setQueue(0, false);
+      this.queueInfo = null;
+      return;
+    }
+    if (r.state === 'done') this.endRace();
+    // mates waiting in the circle with me
+    const mates = [];
+    for (const m of this.mp.remotes.values()) {
+      const q = m.state && m.state.rq;
+      if (m.group.visible && q && Number.isFinite(q.t) && now - q.t < 40) mates.push(m);
+    }
+    const t0 = Math.min(this.raceQ.t, ...mates.map((m) => m.state.rq.t));
+    const startAt = t0 + QUEUE_S;
+    r.setQueue(Math.min(1, (now - t0) / QUEUE_S), true);
+    this.queueInfo = { left: startAt - now, names: mates.map((m) => plain(m.name)) };
+    if (now < startAt) return;
+    // go: everyone in the circle lines up, in the same order on every game
+    const me = this.mp.myId();
+    const ids = [me, ...mates.map((m) => m.peer)].sort();
+    this.raceQ = null;
+    this.queueInfo = null;
+    this.startRace(Math.round(startAt * 10), ids.indexOf(me), ids.length, startAt + 5);
+  }
+
+  startRace(id, slot, n, goAt) {
+    const spot = this.race.gridSpot(slot, n);
+    this.teleport('race', spot);
+    this.race.begin(goAt);
+    this.raceRun = { id, g: 0, d: 0, f: 0 };
+    this.raceField = new Map(); // peer -> { name, rr } of everyone racing with me
+    this.countShown = 0;
+    this.input.rumble(0.3, 0.5, 120);
+    this.showHint('<b>' + MAP.race.name + '</b>' + (n > 1 ? ' against ' + (n - 1) + (n === 2 ? ' mate' : ' mates') : '') + '. Follow the green arrow: the start line, every gate, then back to the finish.', 5);
+  }
+
+  // back to free riding (the results stay up a moment)
+  endRace() {
+    this.race.reset();
+    this.raceRun = null;
+    this.raceField = null;
+    this.ui.raceResults.hidden = true;
+  }
+
+  // everyone in my race, in order: finished first (fastest first), then the
+  // most lines crossed, then the closest to the next one
+  standings() {
+    const rows = [{ me: true, name: this.mp.nick || 'You', ...this.raceRun }];
+    if (this.raceField) {
+      for (const m of this.mp.remotes.values()) {
+        const rr = m.state && m.state.rr;
+        if (rr && rr.id === this.raceRun.id) this.raceField.set(m.peer, { name: plain(m.name), rr });
+      }
+      for (const [peer, e] of this.raceField) {
+        const m = this.mp.remotes.get(peer);
+        const quit = !m || !m.state || !m.state.rr || m.state.rr.id !== this.raceRun.id;
+        rows.push({ me: false, name: e.name, ...e.rr, quit: quit && !e.rr.f });
+      }
+    }
+    rows.sort((a, b) => (a.quit - b.quit) || ((b.f > 0) - (a.f > 0)) || (a.f && b.f ? a.f - b.f : 0) || b.g - a.g || a.d - b.d);
+    return rows;
+  }
+
   onRace(kind, d) {
     const race = MAP.race;
-    if (kind === 'start') {
+    if (kind === 'go') {
       this.banner('GO!', 1.1);
-      this.showHint('<b>' + race.name + '</b>: take every gate in order (follow the green marker), then back through the start.', 4);
-      this.input.rumble(0.3, 0.6, 120);
+      this.input.rumble(0.5, 0.8, 200);
     } else if (kind === 'gate') {
       this.audio.tick?.();
     } else if (kind === 'finish') {
+      this.raceRun.f = Math.round(d.time * 100) / 100;
+      const rows = this.standings();
+      const place = rows.findIndex((r) => r.me);
+      const field = rows.filter((r) => !r.quit).length;
+      const beaten = rows.slice(place + 1).filter((r) => !r.quit).length;
       const best = this.career.finishRace(MAP.id, d.time, d.medal);
-      const pay = Math.round((d.medal >= 0 ? RACE_PAY[d.medal] : 150) * this.mapMult());
+      const pay = Math.round(((d.medal >= 0 ? RACE_PAY[d.medal] : 150) + beaten * 750) * this.mapMult());
       this.career.earn(pay);
       const medal = ['BRONZE', 'SILVER', 'GOLD'][d.medal] || 'FINISHED';
-      this.banner(medal + ' · ' + clock(d.time), 2.6);
-      this.toast(race.name.toUpperCase(), medal.charAt(0) + medal.slice(1).toLowerCase() + ' in ' + clock(d.time) + (best ? ' · new best!' : ''), pay);
+      const ord = (k) => k + (['th', 'st', 'nd', 'rd'][k % 100 > 10 && k % 100 < 14 ? 0 : Math.min(k % 10, 4) % 4] || 'th');
+      this.banner(field > 1 ? ord(place + 1).toUpperCase() + ' · ' + clock(d.time) : medal + ' · ' + clock(d.time), 2.6);
+      this.toast(race.name.toUpperCase(), (field > 1 ? ord(place + 1) + ' of ' + field + ' · ' : '') + medal.charAt(0) + medal.slice(1).toLowerCase() + ' in ' + clock(d.time) + (best ? ' · new best!' : ''), pay);
       this.missionEvent('race', d.medal);
       this.missionEvent('golds', Object.values(this.career.data.races).filter((r) => r.medal === 2).length);
+      if (place === 0 && field > 1) this.missionEvent('racewin', 1);
+      this.resultsT = 30;
     } else if (kind === 'cancel') {
-      this.showHint('Race cancelled. Ride back through the start gate to try again.', 3);
+      this.raceRun = null;
+      this.raceField = null;
+      this.showHint('Race over: you went off course. Ride back into the race circle to race again.', 3);
     }
   }
 
-  updateRaceHud() {
+  updateRaceHud(dt) {
     const r = this.race;
     const el = this.ui.race;
     const p = this.phys;
-    const g0 = r.gates[0];
-    const near = Math.hypot(g0.x - p.px, g0.z - p.pz) < 260;
-    const show = this.state === 'ride' && !this.wipe.on && (r.state === 'run' || near);
+    const now = this.mp.worldClock();
+    const racing = r.state === 'grid' || r.state === 'run';
+    const q = this.queueInfo;
+    const show = this.state === 'ride' && !this.wipe.on && (racing || !!q);
     if (el.hidden === show) el.hidden = !show;
-    if (!show) return;
-    const n = r.gates.length;
-    const best = this.career.race(MAP.id);
-    const txt = r.state === 'run' ? clock(r.t) : 'START';
-    if (this.uiCache.raceT !== txt) {
-      this.uiCache.raceT = txt;
-      this.ui.raceTime.textContent = txt;
+    // the guide arrow over the ski
+    {
+      const fp = this.camMode === 4;
+      const at = this._guideAt || (this._guideAt = new THREE.Vector3());
+      if (fp) {
+        // out over the bow, just under your eye line
+        const c = this.camera.position;
+        at.set(c.x + p.fhx * 7, c.y - 0.45, c.z + p.fhz * 7);
+      } else at.set(p.px + p.fhx * 3.2, p.py + 1.9, p.pz + p.fhz * 3.2);
+      r.steer(at, dt, show && racing);
     }
-    const sub = r.state === 'run' ? (r.next % n === 0 ? 'FINISH' : 'GATE ' + r.next + ' / ' + (n - 1)) : 'Ride through the chequered gate';
+    // finished: the results board until everyone is in (or 30 s)
+    if (r.state === 'done') {
+      this.resultsT -= dt;
+      const rows = this.standings();
+      this.renderResults(rows);
+      const waiting = rows.some((x) => !x.f && !x.quit);
+      if (this.resultsT <= 0 || (!waiting && this.resultsT < 24)) this.endRace();
+    }
+    if (!show) return;
+    let big, sub, goal;
+    if (q) {
+      big = String(Math.max(1, Math.ceil(q.left)));
+      sub = 'RACE STARTS IN';
+      goal = q.names.length ? 'You + ' + q.names.join(', ') : 'Stay in the circle. Mates who ride in race you.';
+    } else if (r.state === 'grid') {
+      const left = r.goAt - now;
+      big = left > 3 ? 'READY' : String(Math.max(1, Math.ceil(left)));
+      sub = MAP.race.name.toUpperCase();
+      goal = 'Hold on… the clock starts on GO';
+      if (left <= 3 && Math.ceil(left) !== this.countShown) {
+        this.countShown = Math.ceil(left);
+        if (this.countShown > 0) this.banner(String(this.countShown), 0.8);
+      }
+    } else {
+      big = clock(r.t);
+      const rows = this.standings();
+      const n = rows.filter((x) => !x.quit).length;
+      const pos = rows.findIndex((x) => x.me) + 1;
+      sub = r.stage() + (n > 1 ? ' · ' + pos + ' / ' + n : '');
+      const tg = r.target();
+      const dist = Math.hypot(tg.x - p.px, tg.z - p.pz);
+      this.raceRun.g = r.next;
+      this.raceRun.d = Math.round(dist);
+      const m = MAP.race.medals;
+      goal = Math.round(dist) + ' m to go · Gold ' + clock(m[2]) + ' · Silver ' + clock(m[1]);
+    }
+    if (this.uiCache.raceT !== big) {
+      this.uiCache.raceT = big;
+      this.ui.raceTime.textContent = big;
+    }
     if (this.uiCache.raceSub !== sub) {
       this.uiCache.raceSub = sub;
       this.ui.raceSub.textContent = sub;
-      const m = MAP.race.medals;
-      this.ui.raceGoal.textContent = 'Gold ' + clock(m[2]) + ' · Silver ' + clock(m[1]) + ' · Bronze ' + clock(m[0]) + (best ? ' · Best ' + clock(best.best) : '');
     }
-    // arrow to the next gate
-    const tg = r.target();
-    const dx = tg.x - p.px, dz = tg.z - p.pz;
+    if (this.uiCache.raceGoal !== goal) {
+      this.uiCache.raceGoal = goal;
+      this.ui.raceGoal.textContent = goal;
+    }
+    el.classList.toggle('queue', !!q);
+    // the arrow to the next gate (or to nothing while waiting)
+    this.ui.raceArrow.style.visibility = racing ? 'visible' : 'hidden';
+    if (racing) {
+      const tg = r.target();
+      const dx = tg.x - p.px, dz = tg.z - p.pz;
+      this.camera.getWorldDirection(this._v);
+      const ang = Math.atan2(dx * this._v.z - dz * this._v.x, dx * this._v.x + dz * this._v.z);
+      this.ui.raceArrow.style.transform = `rotate(${(ang * 180) / Math.PI}deg)`;
+    }
+  }
+
+  // a pointer to the race circle while you are free riding
+  updateCirclePointer() {
+    const r = this.race;
+    const p = this.phys;
+    const el = this.ui.circleDir;
+    const c = r.circle;
+    const dx = c.x - p.px, dz = c.z - p.pz;
+    const d = Math.hypot(dx, dz);
+    const show = this.state === 'ride' && !this.wipe.on && r.state !== 'grid' && r.state !== 'run' && !this.raceQ && d > 25;
+    if (el.hidden === show) el.hidden = !show;
+    if (!show) return;
     this.camera.getWorldDirection(this._v);
     const ang = Math.atan2(dx * this._v.z - dz * this._v.x, dx * this._v.x + dz * this._v.z);
-    this.ui.raceArrow.style.transform = `rotate(${(ang * 180) / Math.PI}deg)`;
+    this.ui.circleArrow.style.transform = `rotate(${(ang * 180) / Math.PI}deg)`;
+    const txt = d > 950 ? (d / 1000).toFixed(1) + ' km' : Math.round(d / 10) * 10 + ' m';
+    if (this.uiCache.circle !== txt) {
+      this.uiCache.circle = txt;
+      this.ui.circleDist.textContent = txt;
+    }
+  }
+
+  renderResults(rows) {
+    const box = this.ui.raceResults;
+    if (box.hidden) box.hidden = false;
+    const ol = this.ui.raceList;
+    const ord = (k) => k + (['th', 'st', 'nd', 'rd'][k % 100 > 10 && k % 100 < 14 ? 0 : Math.min(k % 10, 4) % 4] || 'th');
+    const html = rows.map((x, i) => `<li class="${x.me ? 'me' : ''}"><span>${ord(i + 1)} ${x.me ? 'You' : x.name}</span><b>${x.f ? clock(x.f) : x.quit ? 'out' : 'racing…'}</b></li>`).join('');
+    if (this.uiCache.results !== html) {
+      this.uiCache.results = html;
+      ol.innerHTML = html;
+    }
   }
 
   syncSki() {
@@ -663,6 +835,11 @@ class Game {
       }
       $('adminLock').hidden = true;
       $('adminPanel').hidden = false;
+      // the all-time rider count, for the admin's eyes
+      this.accounts.watchRiders((n) => {
+        this.accounts.riders = n;
+        this.refreshRiderStats();
+      });
       if (!quiet) this.showHint('Admin unlocked.', 1.6);
       this.refreshWorldUi();
     };
@@ -812,9 +989,9 @@ class Game {
       el._get = get;
     };
     this.spotIndex = 0;
-    seg($('segSpot'), [{ name: 'Lagoon' }, { name: 'Wave zone' }, { name: 'Race start' }], () => this.spotIndex, (i) => {
+    seg($('segSpot'), [{ name: 'Lagoon' }, { name: 'Wave zone' }, { name: 'Race circle' }], () => this.spotIndex, (i) => {
       this.spotIndex = i;
-      this.teleport(['lagoon', 'zone', 'race'][i]);
+      this.teleport(['lagoon', 'zone', 'circle'][i]);
     });
     this.setupAdmin(seg);
     const bars = $('vtsBars');
@@ -844,7 +1021,10 @@ class Game {
     $('btnRear').addEventListener('click', () => this.toggleLookBack());
     $('btnAls').addEventListener('click', () => this.toggleAls());
     LOBBIES.forEach((l, i) => $('mpL' + (i + 1)).addEventListener('click', () => this.toggleLobby(l.id)));
-    $('mpName').addEventListener('change', (e) => this.mp.setNick(e.target.value));
+    $('mpName').addEventListener('change', (e) => {
+      this.mp.setNick(e.target.value);
+      this.accounts.setNick(this.mp.nick);
+    });
     $('mpName').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') e.target.blur();
       e.stopPropagation();
@@ -854,7 +1034,8 @@ class Game {
     this.ui = {
       speed: $('speed'), rpmFill: $('rpmFill'), rpmVal: $('rpmVal'), trimVal: $('trimVal'), pumpVal: $('pumpVal'), modeVal: $('modeVal'), boostVal: $('boostVal'),
       score: $('score'), best: $('best'), cash: $('cash'), live: $('live'),
-      race: $('race'), raceTime: $('raceTime'), raceSub: $('raceSub'), raceGoal: $('raceGoal'), raceArrow: $('raceArrow'), liveName: $('liveName'), livePts: $('livePts'), combo: $('combo'), pops: $('pops'),
+      race: $('race'), raceTime: $('raceTime'), raceSub: $('raceSub'), raceGoal: $('raceGoal'), raceArrow: $('raceArrow'),
+      raceResults: $('raceResults'), raceList: $('raceList'), circleDir: $('circleDir'), circleArrow: $('circleArrow'), circleDist: $('circleDist'), liveName: $('liveName'), livePts: $('livePts'), combo: $('combo'), pops: $('pops'),
       banner: $('banner'), hint: $('hint'), flash: $('flash'),
       zoneDir: $('zoneDir'), zoneArrow: $('zoneArrow'), zoneDist: $('zoneDist'), zoneLbl: $('zoneLbl'), zoneKeyTip: $('zoneKey'),
     };
@@ -863,6 +1044,114 @@ class Game {
     this.missionEvent('maps', Object.keys(this.career.data.stats.maps).length);
     this.missionEvent('owned', this.career.data.owned.length);
     this.refreshCareerUi();
+    this.setupAccountUi();
+    this.accounts.init();
+  }
+
+  // ------------------------------------------------------------- account
+  setupAccountUi() {
+    const A = this.accounts;
+    const box = $('authBox');
+    const msg = (t, kind = '') => {
+      $('authMsg').textContent = t;
+      $('authMsg').className = 'auth-msg ' + kind;
+    };
+    const busy = (on) => {
+      for (const id of ['authSignUp', 'authLogIn', 'authForgot']) $(id).disabled = on;
+    };
+    const go = async (how) => {
+      const email = $('authEmail').value;
+      const pass = $('authPass').value;
+      if (!email) return msg('Type your email.', 'bad');
+      if (how !== 'forgot' && pass.length < 6) return msg('Passwords are at least 6 characters.', 'bad');
+      busy(true);
+      msg(how === 'up' ? 'Making your account…' : how === 'in' ? 'Logging in…' : 'Sending…');
+      try {
+        if (how === 'up') await A.signUp(email, pass);
+        else if (how === 'in') await A.logIn(email, pass);
+        else {
+          await A.resetPassword(email);
+          msg('Check your email for a link to set a new password.', 'good');
+          busy(false);
+          return;
+        }
+        $('authPass').value = '';
+        box.hidden = true;
+        this.toast(how === 'up' ? 'ACCOUNT MADE' : 'WELCOME BACK', how === 'up' ? 'Your progress now saves to your account' : 'Your progress is loaded', 0);
+      } catch (e) {
+        msg(authError(e), 'bad');
+      }
+      busy(false);
+    };
+    $('authForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      go('up');
+    });
+    $('authLogIn').addEventListener('click', () => go('in'));
+    $('authForgot').addEventListener('click', () => go('forgot'));
+    $('authClose').addEventListener('click', () => (box.hidden = true));
+    for (const id of ['authEmail', 'authPass']) $(id).addEventListener('keydown', (e) => e.stopPropagation());
+    $('btnAccount').addEventListener('click', async () => {
+      if (A.state === 'in' || A.state === 'offline') {
+        await A.logOut().catch(() => {});
+        this.toast('LOGGED OUT', 'Playing as a guest on this device', 0);
+      } else {
+        msg('');
+        box.hidden = false;
+        $('authEmail').focus();
+      }
+    });
+  }
+
+  // riders online right now (everyone connected, all lobbies and maps); the
+  // admin also sees how many have ever played
+  refreshRiderStats() {
+    const mp = this.mp;
+    const online = mp.room && mp.status === 'ready' ? mp.room.peers().filter((p) => p.kind === 'viewer').length : 0;
+    const t = online ? online.toLocaleString() + ' online now' : '';
+    if ($('mpStats').textContent !== t) $('mpStats').textContent = t;
+    if (mp.adminKey) {
+      const n = this.accounts.riders;
+      const a = (n === undefined ? 'Counting…' : n < 0 ? 'Not available here' : n.toLocaleString() + (n === 1 ? ' rider has' : ' riders have') + ' played') + ' · ' + online + ' online now';
+      if ($('admRiders').textContent !== a) $('admRiders').textContent = a;
+    }
+  }
+
+  onAccount() {
+    const A = this.accounts;
+    const el = $('account');
+    el.hidden = A.state === 'off';
+    el.classList.toggle('guest', A.state === 'guest');
+    const t = $('accountText');
+    t.textContent = '';
+    if (A.state === 'in' || A.state === 'offline') {
+      const b = document.createElement('b');
+      b.textContent = A.email || 'your account';
+      t.append(A.state === 'offline' ? 'Offline · ' : A.saving ? 'Saving · ' : 'Saved to ', b);
+      t.title = A.email;
+      $('btnAccount').textContent = 'LOG OUT';
+      // your online name follows your account
+      if (A.nick && A.nick !== this.mp.nick) {
+        this.mp.setNick(A.nick);
+        $('mpName').value = A.nick;
+      }
+    } else {
+      t.textContent = A.state === 'loading' ? 'Loading your account…' : 'Guest (saved on this device)';
+      $('btnAccount').textContent = 'SIGN UP / LOG IN';
+    }
+    $('btnAccount').hidden = A.state === 'loading';
+    this.refreshRiderStats();
+    // a different save: make sure the ski you are on is one you own
+    if (this.careerKey !== this.career.key) {
+      this.careerKey = this.career.key;
+      if (!this.career.owns(this.spec.id) && !params.get('ski')) this.selectSki(SKIS.findIndex((s) => s.id === START_SKI));
+      else {
+        this.spec = this.tuned(SKIS[this.skiIndex]);
+        this.buildSki();
+      }
+      this.refreshCareerUi();
+      this.refreshMenu();
+    }
   }
 
   switchMap(id) {
@@ -1025,6 +1314,7 @@ class Game {
     }
     this.state = 'ride';
     this.hasRidden = true;
+    this.accounts.countRider();
     $('menu').hidden = true;
     $('help').hidden = true;
     $('hud').hidden = false;
@@ -1669,7 +1959,8 @@ class Game {
   handleKeys() {
     const inp = this.input;
     if (inp.was('Escape') || inp.was('KeyP')) {
-      if (!$('help').hidden) $('help').hidden = true;
+      if (!$('authBox').hidden) $('authBox').hidden = true;
+      else if (!$('help').hidden) $('help').hidden = true;
       else if (this.state === 'ride') this.openMenu();
       else if (this.hasRidden) this.ride();
     }
@@ -1820,6 +2111,7 @@ class Game {
   refreshMp() {
     const mp = this.mp;
     const st = $('mpStatus');
+    this.refreshRiderStats();
     const counts = mp.counts();
     LOBBIES.forEach((l, i) => {
       const b = $('mpL' + (i + 1));
@@ -1904,8 +2196,9 @@ class Game {
     const riding = this.state === 'ride' && !this.wipe.on && $('help').hidden;
     const ctl = this.input.update(dt, T.speed / this.spec.top);
     if (riding) {
-      p.ctrl.throttle = ctl.throttle;
-      p.ctrl.brake = ctl.brake;
+      const held = this.race.state === 'grid'; // on the start line until GO
+      p.ctrl.throttle = held ? 0 : ctl.throttle;
+      p.ctrl.brake = held ? 0 : ctl.brake;
       p.ctrl.steer = ctl.steer;
       p.ctrl.lean = ctl.lean;
       p.ctrl.trimCmd = ctl.trimCmd;
@@ -1971,7 +2264,8 @@ class Game {
     this.audio.surfLevel = this.breakers.roar;
     this.foam.update(p.px + p.vx * 0.8, p.pz + p.vz * 0.8, dt);
     this.buoys.update(dt, time, p);
-    this.race.update(dt, time, p, this.state === 'ride' && !this.wipe.on);
+    this.race.update(dt, time, p, this.state === 'ride' && !this.wipe.on, this.mp.worldClock());
+    this.updateRaceQueue();
     if (this.rain) this.rain.update(dt, this.camera.position);
     if (this.boltT !== undefined) {
       // lightning: a double flash every so often
@@ -2043,8 +2337,12 @@ class Game {
     this.mp.tags(this.camera);
     if (this.state === 'ride') {
       this.updateHUD(dt);
-      this.updateRaceHud();
-    } else if (!this.ui.race.hidden) this.ui.race.hidden = true;
+      this.updateRaceHud(dt);
+      this.updateCirclePointer();
+    } else {
+      if (!this.ui.race.hidden) this.ui.race.hidden = true;
+      this.race.steer(null, dt, false);
+    }
     this.audio.update(T, p.ctrl, this.effects.sprayLevel, this.state !== 'ride', dt);
     // controller rumble follows the engine; hits and landings jolt it
     const rumbling = this.state === 'ride' && !this.wipe.on;
@@ -2062,9 +2360,16 @@ class Game {
   }
 
   // ----------------------------------------------------------- wave zone
-  teleport(where) {
-    const spot = where === 'zone' ? ZONE_IN : where === 'race' ? this.race.startSpot() : SPAWN;
-    this.race.cancel(true);
+  // where: 'lagoon', 'zone', 'circle' (the race circle) or 'race' with the
+  // start-grid spot
+  teleport(where, gridSpot) {
+    const spot = where === 'zone' ? ZONE_IN : where === 'race' ? gridSpot : where === 'circle' ? this.race.startSpot() : SPAWN;
+    if (where !== 'race') {
+      this.race.cancel(true);
+      if (this.race.state === 'done') this.endRace();
+      this.raceRun = null;
+      this.raceField = null;
+    }
     this.phys.time = this.mp.worldTime() - 0.5;
     this.phys.reset(spot.x, spot.z, spot.yaw);
     this.phys.trim = 0;
@@ -2081,7 +2386,7 @@ class Game {
     this.snapCamera();
     this.cam.orbit = this.cam.yaw + 0.5;
     this.race.jumped();
-    if (where === 'race' && this.state === 'ride') this.showHint('<b>' + MAP.race.name + '</b>: ride through the chequered start gate ahead to start the clock.', 4);
+    if (where === 'circle' && this.state === 'ride') this.showHint('<b>Race circle</b>: stay in it for ' + QUEUE_S + ' seconds and you go to the start line. Anyone in it with you races you.', 5);
   }
 
   updateZone() {

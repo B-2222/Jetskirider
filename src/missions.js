@@ -23,6 +23,7 @@ export const MISSIONS = [
   { id: 'score10k', text: 'Reach a score of 10,000', pay: 2000, ev: 'score', n: 10000 },
   { id: 'air4', text: 'Get 4 seconds of air in one jump', pay: 2500, ev: 'air', n: 4 },
   { id: 'gold', text: 'Win a gold medal in a buoy race', pay: 3000, ev: 'race', n: 2 },
+  { id: 'racewin', text: 'Win a race against a mate', pay: 3000, ev: 'racewin', n: 1 },
   { id: 'deep', text: 'Get a deep barrel (over 2 seconds)', pay: 3000, has: 'DEEP BARREL' },
   { id: 'spray10', text: 'Spray 10 riders online', pay: 3000, ev: 'spray', n: 10 },
   { id: 'kmh150', text: 'Hit 150 km/h', pay: 4000, ev: 'speed', n: 150 },

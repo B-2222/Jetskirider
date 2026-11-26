@@ -11,6 +11,24 @@
           "$other": { ".validate": false }
         }
       }
+    },
+    "stats": {
+      ".read": true,
+      "players": {
+        ".write": true,
+        ".validate": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+      }
+    },
+    "accounts": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['c', 't'])",
+        "c": { ".validate": "newData.isString() && newData.val().length <= 20000" },
+        "n": { ".validate": "newData.isString() && newData.val().length <= 16" },
+        "t": { ".validate": "newData.val() === now" },
+        "$other": { ".validate": false }
+      }
     }
   }
 }

@@ -8,7 +8,7 @@ import { DEG } from './util.js';
 export const SKIS = [
   {
     id: 'trixx',
-    price: 2500,
+    price: 0,
     name: 'SPARK TRIXX',
     tagline: 'Rotax 900 ACE · 90 hp',
     blurb: 'Extended VTS trim, step wedges and a riser bar. Built to wheelie, slide and spin.',
@@ -43,7 +43,7 @@ export const SKIS = [
   },
   {
     id: 'spark',
-    price: 0,
+    price: 1000,
     name: 'SPARK 2UP',
     tagline: 'Rotax 900 ACE · 60 hp',
     blurb: 'The lightweight that started it all. Playful, flickable, easy to slide.',

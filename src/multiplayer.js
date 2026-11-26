@@ -16,6 +16,7 @@ import { skiById } from './specs.js';
 import { clamp, smoothstep } from './util.js';
 import { makeFakeRoom } from './fakeroom.js';
 import { FIREBASE_CONFIG } from './firebase-config.js';
+import { firebase } from './fbapp.js';
 import { JetStream } from './jetstream.js';
 import { DEFAULT_WORLD, cleanWorld, sign, verify } from './world.js';
 import { SEA_STATES } from './waves.js';
@@ -357,8 +358,8 @@ export class Multiplayer {
       if (q.get('mpfake')) this.room = makeFakeRoom();
       else if (emu) {
         const { makeFireRoom } = await import('./fireroom.js');
-        const port = parseInt(emu, 10) || 9000;
-        this.room = await makeFireRoom({ projectId: 'demo-jetski', apiKey: 'demo', databaseURL: 'http://127.0.0.1:' + port + '?ns=demo-jetski-default-rtdb' }, { emulator: { host: '127.0.0.1', port } });
+        const shared = await firebase();
+        if (shared) this.room = await makeFireRoom(null, { shared });
       } else if (window.claude && typeof window.claude.use === 'function') {
         this.room = await window.claude.use('room');
         this.user = await window.claude.use('user').catch(() => null);
@@ -371,7 +372,8 @@ export class Multiplayer {
     if (!this.room && useFire && !emu) {
       try {
         const { makeFireRoom } = await import('./fireroom.js');
-        this.room = await makeFireRoom(FIREBASE_CONFIG);
+        const shared = await firebase();
+        if (shared) this.room = await makeFireRoom(FIREBASE_CONFIG, { shared });
       } catch (e) {
         console.warn('jetski online: Firebase did not start', e);
         this.room = null;
@@ -480,6 +482,13 @@ export class Multiplayer {
       const r = await this.joinLobby(LOBBIES[0].id);
       if (r === 'full') await this.joinLobby(LOBBIES[1].id);
     }, 1200);
+  }
+
+  // my own peer label (the same one everyone else sees)
+  myId() {
+    const ps = this.lobby ? this.lobby.peers() : [];
+    const me = ps.find((p) => p.sameTab || p.isMe);
+    return me ? me.peer : 'me';
   }
 
   // riders per lobby, from everyone's lobby-room presence
@@ -737,6 +746,9 @@ export class Multiplayer {
       t: Date.now() + this.clockOffset,
     };
     if (this.lastTrick) st.tk = this.lastTrick;
+    // racing: waiting in the race circle, or how far round the course I am
+    if (g.raceQ) st.rq = g.raceQ;
+    if (g.raceRun) st.rr = g.raceRun;
     this.lobby.presence(st).catch(() => {});
   }
 

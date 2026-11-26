@@ -1,11 +1,14 @@
 // Your progress: cash, the skis and TRIM-X kits you own, missions done, best
-// race times and a few lifetime stats. Saved on this device (no account);
-// if the browser will not store anything it still works for the session.
+// race times and a few lifetime stats. Without an account it is saved on
+// this device; signed in (accounts.js) it lives in your account and follows
+// you to any device. If the browser will not store anything it still works
+// for the session.
 
 import { SKIS, TRIMX, trimxBase } from './specs.js';
 
 const KEY = 'jetski-rider-career';
-export const START_SKI = 'spark';
+export const START_SKI = 'trixx';
+export const GUEST_KEY = KEY;
 export const START_CASH = 500;
 // points from tricks turn into cash at this rate
 export const CASH_PER_POINT = 0.06;
@@ -15,17 +18,46 @@ export const SPRAY_PAY = 60;
 
 export class Career {
   constructor() {
+    // where this device keeps it: the guest save, or the copy of the account
+    // you were last signed in to (until the account itself has loaded)
+    this.key = KEY;
+    try {
+      const uid = localStorage.getItem('jetski-rider-uid');
+      if (uid && /^[A-Za-z0-9]{6,64}$/.test(uid)) this.key = KEY + '-' + uid;
+    } catch {
+      /* ignore */
+    }
     this.data = this.load();
     this.onChange = null;
+    this.sink = null; // signed in: (data) => upload to the account
   }
 
   load() {
-    let d = null;
+    return Career.clean(this.loadKey(this.key));
+  }
+
+  loadKey(key) {
     try {
-      d = JSON.parse(localStorage.getItem(KEY) || 'null');
+      return JSON.parse(localStorage.getItem(key) || 'null');
     } catch {
-      d = null;
+      return null;
     }
+  }
+
+  // switch to another set of progress (your account's, or back to the guest
+  // save on this device)
+  use(d, key = KEY) {
+    this.key = key;
+    this.data = Career.clean(d);
+    this.save();
+  }
+
+  fresh() {
+    return Career.clean(null);
+  }
+
+  // keep only what we understand, in range
+  static clean(d) {
     const fresh = { v: 1, cash: START_CASH, earned: 0, owned: [START_SKI], trimx: {}, missions: {}, races: {}, stats: { maps: {}, sprays: 0, races: 0, golds: 0 } };
     if (!d || typeof d !== 'object') return fresh;
     // keep only what we understand
@@ -48,10 +80,11 @@ export class Career {
 
   save() {
     try {
-      localStorage.setItem(KEY, JSON.stringify(this.data));
+      localStorage.setItem(this.key, JSON.stringify(this.data));
     } catch {
       /* storage unavailable: progress lasts for this session */
     }
+    if (this.sink) this.sink(this.data);
     if (this.onChange) this.onChange();
   }
 

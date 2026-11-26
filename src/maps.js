@@ -31,9 +31,10 @@ export const MAPS = [
       [-420, -20, PI * 0.8],
     ],
     slalom: true,
+    // circle: where the race circle floats (wait in it to race)
     // medals: bronze, silver, gold times (s), set from autopilot laps: bronze
-    // on the Spark 2UP, silver on a GTI, gold on an RXP-X 325
-    race: { name: 'Lagoon Loop', gates: [[-60, -160], [180, -170], [420, 40], [350, 380], [60, 330], [-220, 360], [-300, 120], [-200, -120]], medals: [134, 99, 77] },
+    // on the Spark Trixx, silver on a GTI, gold on an RXP-X 325
+    race: { name: 'Lagoon Loop', circle: [40, -190], gates: [[-60, -160], [180, -170], [420, 40], [350, 380], [60, 330], [-220, 360], [-300, 120], [-200, -120]], medals: [113, 99, 77] },
   },
   {
     id: 'reef',
@@ -61,7 +62,7 @@ export const MAPS = [
     spawn: { x: 250, z: 120, yaw: 0.2 },
     ramps: [],
     veg: { palms: 180, canopy: 1700, rocks: 420 },
-    race: { name: 'Volcano Run', gates: [[200, 0], [380, -600], [650, -850], [760, -620], [560, 120], [300, 330]], medals: [167, 123, 96] },
+    race: { name: 'Volcano Run', circle: [290, 180], gates: [[200, 0], [380, -600], [650, -850], [760, -620], [560, 120], [300, 330]], medals: [141, 123, 96] },
   },
   {
     id: 'lake',
@@ -95,7 +96,7 @@ export const MAPS = [
       [120, 120, 0.5],
     ],
     veg: { palms: 0, canopy: 3200, rocks: 260, pine: true },
-    race: { name: 'Lake Sprint', gates: [[0, -320], [380, -360], [500, -80], [160, 100], [-60, 480], [-420, 160], [-340, -180]], medals: [171, 125, 96] },
+    race: { name: 'Lake Sprint', circle: [50, -190], gates: [[0, -320], [380, -360], [500, -80], [160, 100], [-60, 480], [-420, 160], [-340, -180]], medals: [143, 125, 96] },
   },
   {
     id: 'storm',
@@ -127,7 +128,7 @@ export const MAPS = [
     ramps: [],
     veg: { palms: 50, canopy: 900, rocks: 650, dark: true },
     mood: { grey: 0.74, dark: 0.7, sun: 0.26, cloud: 0.95, fog: 1900, exposure: 0.92, water: [0.62, 0.74, 0.76], rain: true },
-    race: { name: 'Headland Run', gates: [[-200, 150], [-600, 320], [-450, 800], [250, 950], [550, 520], [250, 220]], medals: [198, 150, 119] },
+    race: { name: 'Headland Run', circle: [-150, 300], gates: [[-200, 150], [-600, 320], [-450, 800], [250, 950], [550, 520], [250, 220]], medals: [169, 150, 119] },
   },
 ];
 

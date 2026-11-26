@@ -72,7 +72,7 @@ Only the admin changes them. Enter the admin code in the ADMIN section of the ga
 
 ## Online
 
-Two lobbies, up to 16 riders each; you join Lobby 1 automatically (switch in the ONLINE section of the garage). Riders, skis, names, jet streams and tricks show for everyone, with a live leaderboard and trick feed, and you can hose each other with your jet. Press `Enter` (or CHAT) to talk to everyone online. The wave sets, time of day and water are the same for all.
+Two lobbies, up to 16 riders each (a rider who has gone quiet, such as a phone that went to sleep, is dropped from the count within a minute); you join Lobby 1 automatically (switch in the ONLINE section of the garage). Riders, skis, names, jet streams and tricks show for everyone, with a live leaderboard and trick feed, and you can hose each other with your jet. Press `Enter` (or CHAT) to talk to everyone online. The wave sets, time of day and water are the same for all.
 
 - Inside claude.ai it uses the page's built-in room (everyone needs the shared link and must be signed in).
 - On any other host (Vercel, Netlify, GitHub Pages...) it uses a free Firebase Realtime Database. Set it up once as below; without it the game stays solo there.
@@ -83,11 +83,12 @@ Two lobbies, up to 16 riders each; you join Lobby 1 automatically (switch in the
 2. In the database's **Rules** tab, replace everything with the contents of [`database.rules.json`](database.rules.json) and press **Publish**. Riders can then only write their own small node in the three rooms the game uses, and nothing else.
 3. **Project settings** (gear icon) > **Your apps** > the web icon `</>` > register an app (no hosting). Copy the `firebaseConfig` object into [`src/firebase-config.js`](src/firebase-config.js) as `FIREBASE_CONFIG`. Make sure it has a `databaseURL` (if not, copy the URL shown at the top of the Realtime Database page). These values are not secret.
 4. **Vercel**: at [vercel.com](https://vercel.com) sign in with GitHub, **Add New > Project**, import this repository. Framework preset **Other**, no build command, output directory left as it is. **Deploy**. Every push to the branch redeploys.
-5. Send friends the Vercel link; everyone picks the same lobby in the garage.
+5. **Accounts**: in the Firebase console open **Build > Authentication > Get started**, then **Sign-in method > Email/Password > Enable > Save**. Under **Authentication > Settings > Authorized domains** add your Vercel domain (for example `jetskirider.vercel.app`). Re-publish the rules from step 2 whenever `database.rules.json` changes.
+6. Send friends the Vercel link; everyone picks the same lobby in the garage.
 
 The free plan allows 100 riders online at once and 10 GB of downloads a month: roughly 40 hours a month of four friends riding together. If the monthly allowance ever runs out, online riding pauses until the next month; the free plan never charges.
 
-To test locally without Firebase, open the game with `?mpfake=1` in two tabs of one browser. To test the Firebase path, run the emulator (`firebase emulators:start --only database --project demo-jetski` with `database.rules.json`) and open `?fbemu=9000`.
+To test locally without Firebase, open the game with `?mpfake=1` in two tabs of one browser. To test the Firebase path, run the emulators (`firebase emulators:start --only database,auth --project demo-jetski` with `database.rules.json`, database on port 9000 and auth on 9099) and open `?fbemu=9000`.
 
 ## Wave zone
 
@@ -99,7 +100,7 @@ Sets vary: in every six (about six and a half minutes) two are bigger and one is
 
 Every trick pays cash (points turn into dollars, so big tricks and combos pay most), and so do buoy races (by medal), missions (one-off challenges with a reward each) and spraying other riders online with your jet. Cash, skis, kits, missions and best race times are saved in the browser on that device.
 
-You start on the Spark 2UP with $500. The garage lists every ski in price order: pick a locked one to look at it, then BUY it when you have the cash. Fourteen skis from the Spark 2UP (free) to the 600 hp tuned RXP-X ($120,000): Spark Trixx, Explorer Pro 170, GTI SE 170, the Freestyle, Race and Pro Freestyle stand-ups, GTR 230, Wake Pro 230, RXT-X 325, GTX Limited 325, RXP-X 325, RXP-X 450 Turbo and the 600. Each has its own weight, thrust, grip, trim range and colourways.
+You start on the Spark Trixx with $500. The garage lists every ski in price order: pick a locked one to look at it, then BUY it when you have the cash. Fourteen skis from the Spark Trixx (free) to the 600 hp tuned RXP-X ($120,000): Spark 2UP, Explorer Pro 170, GTI SE 170, the Freestyle, Race and Pro Freestyle stand-ups, GTR 230, Wake Pro 230, RXT-X 325, GTX Limited 325, RXP-X 325, RXP-X 450 Turbo and the 600. Each has its own weight, thrust, grip, trim range and colourways.
 
 TRIM-X kits are bought per sit-down ski. Stage 1 extends the trim range for a proper rooster tail, Stage 2 trims even further for a massive one (the Trixx has Stage 1 built in). A ski without a kit rides exactly as before.
 
@@ -112,7 +113,11 @@ Pick the map in the garage (the game reloads into it). Riders online only see ot
 - **Glass Lake**: a flat lake in a ring of forest hills, with a wave pool kicking out quick little rollers. Bonus: slides, wheelies and flat-water flips pay double.
 - **Storm Coast**: cliffs and sea stacks, always rough, heavy surf that keeps coming, rain and lightning. Bonus: everything pays 1.5x.
 
-Each map has a buoy race: a loop of gates. Choose *Race start* in the garage (or just ride through the chequered gate) and the clock starts; take every gate in order, following the green marker, and come back through the start. Gold, silver and bronze times are shown on screen.
+Each map has a buoy race: a loop of gates, started from a glowing race circle on the water near the spawn (a green RACE arrow at the top of the screen points to it). Stay in the circle for 10 seconds and you go to the start grid; anyone who is in the circle with you races you. Three, two, one, GO: cross the start line, take every gate in order and come back to the finish, following the green arrow over your ski. Live positions show during the race and a results board at the end. Medals pay by time (gold, silver and bronze times are on screen), and every mate you beat pays extra.
+
+## Accounts
+
+SIGN UP in the garage with an email and a password and your progress (cash, skis, kits, missions, race times) saves to your account in the Firebase database; log in on any other device to carry on. Signing up moves what you have done so far into the new account. Without an account progress stays in that browser. Accounts use Firebase Authentication (Email/Password); the rules in `database.rules.json` let each player read and write only their own save. The admin panel also shows how many devices have ever played (counted from the first ride).
 
 ## How it works
 
