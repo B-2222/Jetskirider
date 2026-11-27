@@ -291,8 +291,13 @@ class Game {
     this.applyTime(true);
     this.mp.onWorld = (w) => this.applyWorld(w);
     this.mp.onGift = (amount) => {
-      this.career.earn(amount);
-      this.toast('GIFT FROM THE ADMIN', 'You got ' + money(amount) + '!', amount);
+      if (amount > 0) {
+        this.career.earn(amount);
+        this.toast('GIFT FROM THE ADMIN', 'You got ' + money(amount) + '!', amount);
+      } else {
+        const took = this.career.take(-amount);
+        this.toast('THE ADMIN TOOK CASH', money(took) + ' was taken from your wallet', 0);
+      }
     };
     // one wave clock for everyone, so friends in a lobby see the same surf
     // (start a second early: the settle below runs the clock forward)
@@ -915,11 +920,12 @@ class Game {
       const peer = sel.value;
       const amt = parseInt($('admGiftAmt').value, 10);
       if (!peer) return say('pick someone to give to.');
-      if (!(amt >= 1)) return say('type an amount.');
+      if (!amt) return say('type an amount (minus to take cash away).');
       const name = sel.options[sel.selectedIndex].textContent;
       $('admGift').disabled = true;
       const ok = await mp.sendGift(peer, amt);
-      $('admStatus').textContent = ok ? 'Gave ' + money(Math.min(amt, 1000000)) + ' to ' + name + '.' : 'Not online, so no gift sent.';
+      const a = Math.max(-1000000, Math.min(1000000, amt));
+      $('admStatus').textContent = !ok ? 'Not online, so nothing sent.' : a > 0 ? 'Gave ' + money(a) + ' to ' + name + '.' : 'Took ' + money(-a) + ' from ' + name + ' (never below $0).';
       // one at a time, so each gift reaches its rider
       setTimeout(() => ($('admGift').disabled = false), 3000);
     });

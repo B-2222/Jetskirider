@@ -151,7 +151,7 @@
         <div id="adminPanel" hidden>
           <p class="admin-note">You are the admin. Everything here changes the world for everyone online.</p>
           <div class="row"><span class="lbl">RIDERS</span><span class="world-val" id="admRiders">Counting…</span></div>
-          <div class="row gift"><span class="lbl">GIFT</span><select id="admGiftTo"><option value="">Nobody online</option></select><input id="admGiftAmt" type="number" min="1" max="1000000" step="100" value="1000" aria-label="Amount"><button id="admGift">GIVE</button></div>
+          <div class="row gift"><span class="lbl">GIFT</span><select id="admGiftTo"><option value="">Nobody online</option></select><input id="admGiftAmt" type="number" min="-1000000" max="1000000" step="100" value="1000" aria-label="Amount (minus takes cash away)" title="Minus takes cash away"><button id="admGift">GIVE</button></div>
           <div class="row"><span class="lbl">TIME</span><input type="range" id="admTime" min="0" max="24" step="0.25"><span class="world-val" id="admTimeLbl">12:00</span></div>
           <div class="row"><span class="lbl">CLOCK</span><div class="seg" id="admClock"><button data-s="auto">Normal day</button><button data-s="0">Freeze</button><button data-s="1">Run</button><button data-s="12">Fast</button></div></div>
           <div class="row"><span class="lbl">WATER</span><div class="seg" id="admSea"></div></div>

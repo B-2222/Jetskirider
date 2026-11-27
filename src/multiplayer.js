@@ -693,7 +693,9 @@ export class Multiplayer {
 
   async sendGift(peer, amount) {
     if (!this.adminKey || !this.room) return false;
-    const a = Math.max(1, Math.min(1000000, Math.round(amount)));
+    // negative takes cash away
+    const a = Math.max(-1000000, Math.min(1000000, Math.round(amount)));
+    if (!a) return false;
     const j = JSON.stringify({ to: peer, a, i: Math.random().toString(36).slice(2, 9), t: Date.now() });
     const g = await sign(this.adminKey, j);
     await this.room.presence({ gf: { j, g } }).catch(() => {});
@@ -715,7 +717,7 @@ export class Multiplayer {
         continue;
       }
       seen.add(gf.g);
-      if (!o || o.to !== me || !Number.isFinite(o.a) || o.a < 1 || o.a > 1000000 || Math.abs(Date.now() - o.t) > 600000) continue;
+      if (!o || o.to !== me || !Number.isFinite(o.a) || !o.a || Math.abs(o.a) > 1000000 || Math.abs(Date.now() - o.t) > 600000) continue;
       verify(gf.j, gf.g).then((ok) => {
         if (ok && this.onGift) this.onGift(Math.round(o.a));
       });

@@ -108,6 +108,15 @@ export class Career {
     return true;
   }
 
+  // the admin can take cash away (never below zero); returns how much went
+  take(n) {
+    const t = Math.min(this.data.cash, Math.max(0, Math.round(n)));
+    if (!t) return 0;
+    this.data.cash -= t;
+    this.save();
+    return t;
+  }
+
   owns(id) {
     return this.data.owned.includes(id);
   }
