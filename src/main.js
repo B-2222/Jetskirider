@@ -1169,7 +1169,9 @@ class Game {
     }
     this.vtsBars = [...bars.children];
 
-    $('btnRide').addEventListener('click', () => this.ride());
+    $('btnRide').addEventListener('click', () => this.rideClick());
+    this.setupTabs();
+    $('pickClose').addEventListener('click', () => this.closePick());
     $('btnHelp').addEventListener('click', () => ($('help').hidden = false));
     $('btnHelpClose').addEventListener('click', () => ($('help').hidden = true));
     $('btnPause').addEventListener('click', () => this.openMenu());
@@ -1259,6 +1261,9 @@ class Game {
         this.refreshBoardUi();
       });
     }
+    this.refreshStyleUi();
+    this.refreshLevelUi();
+    this.refreshDailyUi();
   }
 
   // tap an item: wear it if you have it, otherwise tap again to buy it
@@ -1440,6 +1445,90 @@ class Game {
       this.refreshCareerUi();
       this.refreshMenu();
     }
+  }
+
+  // ------------------------------------------------------------- menu tabs
+  setupTabs() {
+    let last = 'garage';
+    try {
+      last = localStorage.getItem('jetski-rider-tab') || 'garage';
+    } catch {
+      /* ignore */
+    }
+    for (const b of $('menuTabs').children) b.addEventListener('click', () => this.showTab(b.dataset.tab));
+    this.showTab(last);
+  }
+
+  showTab(name) {
+    if (!document.querySelector('.tab[data-tab="' + name + '"]')) name = 'garage';
+    for (const b of $('menuTabs').children) b.setAttribute('aria-selected', b.dataset.tab === name ? 'true' : 'false');
+    for (const t of document.querySelectorAll('.tab-body .tab')) t.hidden = t.dataset.tab !== name;
+    document.querySelector('.tab-body').scrollTop = 0;
+    try {
+      localStorage.setItem('jetski-rider-tab', name);
+    } catch {
+      /* ignore */
+    }
+    if (name === 'progress') {
+      this.boardAt = 0;
+      this.refreshBoardUi();
+    }
+  }
+
+  // RIDE: back on the water if you were riding; the first time, pick where
+  rideClick() {
+    if (!this.career.owns(this.spec.id) && !params.get('ski')) return this.ride();
+    // (?nopick=1: straight on the water, for the test tools)
+    if (this.hasRidden || params.get('autostart') || params.get('nopick')) return this.ride();
+    this.openPick();
+  }
+
+  openPick() {
+    const mp = this.mp;
+    const list = $('pickList');
+    list.textContent = '';
+    const counts = mp.counts();
+    const ready = mp.status === 'ready' && !!mp.room;
+    const add = (title, sub, on, cls) => {
+      const b = document.createElement('button');
+      const t = document.createElement('span');
+      t.textContent = title;
+      const sm = document.createElement('small');
+      sm.textContent = sub;
+      b.append(t, sm);
+      if (cls) b.className = cls;
+      b.addEventListener('click', on);
+      list.appendChild(b);
+      return b;
+    };
+    // the busiest lobby with room is the suggestion
+    let best = null;
+    for (const l of LOBBIES) {
+      const n = counts[l.id] || 0;
+      if (n < MAX_PER_LOBBY && (!best || n > (counts[best.id] || 0))) best = l;
+    }
+    for (const l of LOBBIES) {
+      const n = counts[l.id] || 0;
+      const inIt = mp.lobbyId === l.id;
+      const b = add(l.name.toUpperCase(), inIt ? "You're in it" : n + ' / ' + MAX_PER_LOBBY + ' riding', () => this.pickLobby(l.id), ready && best === l ? 'best' : '');
+      b.disabled = !ready || (!inIt && n >= MAX_PER_LOBBY);
+    }
+    add('RIDE SOLO', 'Just you, no lobby', () => this.pickLobby(null), ready ? '' : 'best');
+    $('pickNote').textContent = ready ? 'Riders in a lobby see each other, race and chat. You can change lobby in the ONLINE tab.' : mp.status === 'connecting' ? 'Connecting to the online lobbies…' : 'Online lobbies are not available right now.';
+    $('lobbyPick').hidden = false;
+    if (this.input.usingGamepad) this.setPadFocus(list.querySelector('.best') || list.firstChild);
+  }
+
+  closePick() {
+    $('lobbyPick').hidden = true;
+  }
+
+  async pickLobby(id) {
+    const mp = this.mp;
+    this.closePick();
+    if (id && mp.lobbyId !== id) await this.toggleLobby(id);
+    else if (!id && mp.lobbyId) await this.toggleLobby(mp.lobbyId);
+    this.ride();
   }
 
   switchMap(id) {
@@ -2260,10 +2349,11 @@ class Game {
     if (inp.was('Escape') || inp.was('KeyP')) {
       if (!$('authBox').hidden) $('authBox').hidden = true;
       else if (!$('help').hidden) $('help').hidden = true;
+      else if (!$('lobbyPick').hidden) this.closePick();
       else if (this.state === 'ride') this.openMenu();
       else if (this.hasRidden) this.ride();
     }
-    if (inp.was('Enter') && this.state === 'menu') this.ride();
+    if (inp.was('Enter') && this.state === 'menu' && $('lobbyPick').hidden) this.rideClick();
     else if (inp.was('Enter') && this.state === 'ride' && this.mp.status === 'ready') this.openChat();
     if (inp.was('KeyM')) this.toggleMute();
     // time and water belong to the shared world: only the admin moves them
@@ -2324,11 +2414,12 @@ class Game {
     if (inp.padWas(PAD.A) && this.padFocusEl && document.contains(this.padFocusEl)) this.padFocusEl.click();
     if (inp.padWas(PAD.B)) {
       if (helpOpen) $('help').hidden = true;
+      else if (!$('lobbyPick').hidden) this.closePick();
       else if (this.hasRidden) this.ride();
     }
     if (inp.padWas(PAD.MENU)) {
       if (helpOpen) $('help').hidden = true;
-      else this.ride();
+      else if ($('lobbyPick').hidden) this.rideClick();
     }
     if (!helpOpen && inp.padWas(PAD.RB)) this.stepSki(1);
     if (!helpOpen && inp.padWas(PAD.LB)) this.stepSki(-1);
@@ -2336,11 +2427,11 @@ class Game {
   }
 
   padNav(dx, dy) {
-    const root = !$('help').hidden ? $('help') : $('menu');
+    const root = !$('help').hidden ? $('help') : !$('lobbyPick').hidden ? $('lobbyPick') : $('menu');
     const items = [...root.querySelectorAll('button, input')].filter((el) => el.offsetParent !== null && !el.disabled);
     if (!items.length) return;
     let cur = this.padFocusEl;
-    if (!cur || !items.includes(cur)) return this.setPadFocus(root.querySelector('.go') || items[0]);
+    if (!cur || !items.includes(cur)) return this.setPadFocus(root.querySelector('.go, .best') || items[0]);
     const a = cur.getBoundingClientRect();
     const ax = a.left + a.width / 2;
     const ay = a.top + a.height / 2;

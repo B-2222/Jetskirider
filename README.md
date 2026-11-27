@@ -72,7 +72,7 @@ Only the admin changes them. Enter the admin code in the ADMIN section of the ga
 
 ## Online
 
-Two lobbies, up to 16 riders each (a rider who has gone quiet, such as a phone that went to sleep, is dropped from the count within a minute); you join Lobby 1 automatically (switch in the ONLINE section of the garage). Riders, skis, names, jet streams and tricks show for everyone, with a live leaderboard and trick feed, and you can hose each other with your jet. Press `Enter` (or CHAT) to talk to everyone online. The wave sets, time of day and water are the same for all.
+Two lobbies, up to 16 riders each (a rider who has gone quiet, such as a phone that went to sleep, is dropped from the count within a minute); pressing RIDE asks where to ride (Lobby 1, Lobby 2 with how many are in each, or solo); switch later in the garage's ONLINE tab. Riders, skis, names, jet streams and tricks show for everyone, with a live leaderboard and trick feed, and you can hose each other with your jet. Press `Enter` (or CHAT) to talk to everyone online. The wave sets, time of day and water are the same for all.
 
 - Inside claude.ai it uses the page's built-in room (everyone needs the shared link and must be signed in).
 - On any other host (Vercel, Netlify, GitHub Pages...) it uses a free Firebase Realtime Database. Set it up once as below; without it the game stays solo there.

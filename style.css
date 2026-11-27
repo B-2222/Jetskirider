@@ -168,9 +168,32 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 #touch .t-small { font-size: 13px; }
 
 /* ---------- garage ---------- */
-#menu { position: absolute; inset: 0; display: flex; background: linear-gradient(90deg, rgba(4, 18, 26, 0.86) 0, rgba(4, 18, 26, 0.6) 34%, rgba(4, 18, 26, 0) 62%); overflow-y: auto; }
-.menu-panel { width: min(100%, 520px); min-height: 100%; display: flex; flex-direction: column; gap: 16px; padding-block: max(22px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-bottom, 0px)); padding-left: max(22px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-.menu-head h1 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(54px, 9.5vw, 92px); line-height: 0.84; margin: 0; letter-spacing: 0.005em; text-wrap: balance; }
+#menu { position: absolute; inset: 0; display: flex; background: linear-gradient(90deg, rgba(4, 18, 26, 0.88) 0, rgba(4, 18, 26, 0.62) 36%, rgba(4, 18, 26, 0) 62%); overflow: hidden; }
+/* the garage: a compact header, tabs, and only the open tab scrolls */
+.menu-panel { width: min(100%, 540px); height: 100%; display: flex; flex-direction: column; gap: 12px; padding-block: max(18px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px)); padding-left: max(22px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
+.menu-head h1 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(40px, 6vw, 60px); line-height: 0.84; margin: 0; letter-spacing: 0.005em; text-wrap: balance; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); flex: none; overflow-x: auto; scrollbar-width: none; }
+.tabs button { background: transparent; border: 0; border-bottom: 3px solid transparent; padding: 8px 12px 6px; font-family: var(--display); font-weight: 800; letter-spacing: 0.1em; font-size: 15px; color: var(--mist); white-space: nowrap; }
+.tabs button:hover { color: var(--foam); }
+.tabs button[aria-selected="true"] { color: var(--foam); border-bottom-color: var(--accent); }
+.tab-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: 8px; overscroll-behavior: contain; }
+.tab { display: grid; gap: 16px; padding-bottom: 12px; }
+.tab .mission-list { max-height: none; }
+/* ride and controls: always in reach on the right */
+.menu-side { position: absolute; right: max(28px, env(safe-area-inset-right, 0px)); bottom: max(24px, env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.menu-side .go { font-size: 58px; padding: 14px 58px 8px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35); }
+.menu-side .credit { margin: 0; }
+/* where to ride */
+#lobbyPick { position: absolute; inset: 0; z-index: 26; background: rgba(4, 18, 26, 0.72); display: grid; place-items: center; padding: 16px; }
+.pick-panel { width: min(100%, 380px); background: var(--panel-solid); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; display: grid; gap: 12px; }
+.pick-panel h2 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 34px; line-height: 0.9; margin: 0; }
+.pick-list { display: grid; gap: 8px; }
+.pick-list button { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; font-family: var(--display); font-weight: 800; letter-spacing: 0.06em; font-size: 20px; text-align: left; }
+.pick-list button small { font-family: var(--text); font-weight: 500; letter-spacing: 0; font-size: 13px; color: var(--mist); }
+.pick-list button:hover:not(:disabled), .pick-list button.pad-focus { border-color: var(--accent); }
+.pick-list button.best { border-color: var(--accent); }
+.pick-list button:disabled { opacity: 0.45; }
+.pick-panel .link { justify-self: start; }
 .level { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 10px; margin-top: 10px; max-width: 460px; }
 .level b { font-family: var(--display); font-weight: 800; letter-spacing: 0.06em; font-size: 16px; color: var(--foam); white-space: nowrap; }
 .level small { color: var(--mist); font-size: 12px; white-space: nowrap; }
@@ -233,7 +256,7 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 .map-info { margin: 0; display: grid; gap: 4px; line-height: 1.4; max-width: 56ch; }
 .map-meta { color: var(--mist); font-size: 13px; }
 .map-bonus { font-family: var(--display); font-weight: 700; letter-spacing: 0.08em; font-size: 14px; color: var(--cash); }
-.ski-opt em.price { display: block; font-family: var(--text); font-style: normal; font-weight: 600; font-size: 11px; color: var(--cash); margin-top: 2px; }
+.ski-opt em.price { display: block; font-family: var(--text); font-style: normal; font-weight: 600; font-size: 10px; color: var(--cash); margin-top: 2px; }
 .ski-opt.locked { opacity: 0.82; }
 .ski-opt em.price.owned { color: var(--mist); letter-spacing: 0.08em; }
 .ski-opt[aria-selected="true"] em.price.owned { color: var(--accent-ink); }
@@ -253,14 +276,14 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 .mission-list li.done b { opacity: 0.45; text-decoration: line-through; }
 .menu-head .tag { position: static; display: block; white-space: normal; text-shadow: none; will-change: auto; margin: 8px 0 0; color: var(--mist); letter-spacing: 0.04em; }
 .garage { display: grid; gap: 12px; }
-.ski-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.ski-opt { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 7px 11px 5px; font-family: var(--display); font-weight: 800; font-size: 19px; line-height: 1; letter-spacing: 0.03em; }
-.ski-opt small { display: block; font-family: var(--text); font-weight: 500; font-size: 11px; color: var(--mist); letter-spacing: 0.03em; margin-top: 3px; }
+.ski-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.ski-opt { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 5px 9px 4px; font-family: var(--display); font-weight: 800; font-size: 16px; line-height: 1; letter-spacing: 0.03em; }
+.ski-opt small { display: inline; font-family: var(--text); font-weight: 500; font-size: 10px; color: var(--mist); letter-spacing: 0.03em; margin-left: 6px; }
 .ski-opt[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .ski-opt[aria-selected="true"] small { color: var(--accent-ink); opacity: 0.75; }
-.ski-detail { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; backdrop-filter: blur(6px); }
+.ski-detail { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; display: grid; gap: 8px; backdrop-filter: blur(6px); }
 .ski-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.ski-title h2 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 38px; line-height: 0.9; margin: 0; }
+.ski-title h2 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 32px; line-height: 0.9; margin: 0; }
 .ski-title span { color: var(--mist); font-size: 13px; }
 .ski-detail p { margin: 0; color: var(--foam); max-width: 56ch; line-height: 1.45; }
 .stats { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; }
@@ -304,9 +327,15 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
   /* sits at the bottom when it fits; when it is taller than the screen it
      starts at the top and scrolls (justify-content: flex-end would push the
      top out of reach) */
-  .menu-panel { width: 100%; }
-  .menu-panel > .menu-head { margin-top: auto; }
-  .menu-head h1 { font-size: clamp(44px, 14vw, 72px); }
+  .menu-panel { width: 100%; gap: 8px; padding-bottom: 0; }
+  .menu-head h1 { font-size: clamp(32px, 10vw, 44px); }
+  .menu-head .tag { display: none; }
+  .tab-body { padding-bottom: 96px; }
+  /* phones: ride and controls in a bar along the bottom */
+  .menu-side { left: 0; right: 0; bottom: 0; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; padding: 10px max(16px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background: linear-gradient(0deg, rgba(4, 18, 26, 0.95) 60%, rgba(4, 18, 26, 0)); }
+  .menu-side .go { font-size: 38px; padding: 10px 34px 6px; order: 2; }
+  .menu-side .ghost { order: 1; padding: 10px 12px 8px; font-size: 15px; }
+  .menu-side .credit { order: 1; font-size: 10px; }
   .mini { display: none; }
   .hud-btns .icon-btn { padding: 9px 9px 8px; }
   .score-row.dim { display: none; }

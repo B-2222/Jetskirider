@@ -113,77 +113,100 @@
         <div class="level"><b id="mLevel">LV 1 · Grom</b><span class="xpbar"><i id="mXpFill"></i></span><small id="mXpText"></small><button id="btnPrestige" hidden>PRESTIGE</button></div>
       </header>
 
-      <section class="maps" aria-label="Choose a map">
-        <div class="row"><span class="lbl">MAP</span><div class="seg wrap" id="segMap"></div></div>
-        <p class="map-info" id="mapInfo"></p>
-      </section>
+      <nav class="tabs" id="menuTabs" role="tablist" aria-label="Garage sections">
+        <button role="tab" data-tab="garage">GARAGE</button>
+        <button role="tab" data-tab="style">STYLE</button>
+        <button role="tab" data-tab="map">MAP</button>
+        <button role="tab" data-tab="progress">PROGRESS</button>
+        <button role="tab" data-tab="online">ONLINE</button>
+      </nav>
 
-      <section class="garage" aria-label="Choose your ski">
-        <div class="ski-list" id="skiList" role="listbox" aria-label="Sea-Doo models"></div>
-        <div class="ski-detail">
-          <div class="ski-title"><h2 id="mName">SPARK TRIXX</h2><span id="mTag">Rotax 900 ACE · 90 hp</span></div>
-          <p id="mBlurb"></p>
-          <div class="stats" id="mStats"></div>
-          <div class="row"><span class="lbl">COLOUR</span><div class="swatches" id="mColors"></div><span class="cw-name" id="mColorName"></span></div>
-          <div class="row trimx" id="trimxRow"><span class="lbl">TRIM-X</span><span class="world-val" id="trimxVal">Stock trim</span><button id="btnTrimx">STAGE 1</button></div>
-          <div class="buy-row" id="buyRow" hidden><button class="buy" id="btnBuy">BUY</button><span id="buyNote"></span></div>
+      <div class="tab-body">
+        <div class="tab" data-tab="garage" role="tabpanel">
+        <section class="garage" aria-label="Choose your ski">
+          <div class="ski-list" id="skiList" role="listbox" aria-label="Sea-Doo models"></div>
+          <div class="ski-detail">
+            <div class="ski-title"><h2 id="mName">SPARK TRIXX</h2><span id="mTag">Rotax 900 ACE · 90 hp</span></div>
+            <p id="mBlurb"></p>
+            <div class="stats" id="mStats"></div>
+            <div class="row"><span class="lbl">COLOUR</span><div class="swatches" id="mColors"></div><span class="cw-name" id="mColorName"></span></div>
+            <div class="row trimx" id="trimxRow"><span class="lbl">TRIM-X</span><span class="world-val" id="trimxVal">Stock trim</span><button id="btnTrimx">STAGE 1</button></div>
+            <div class="buy-row" id="buyRow" hidden><button class="buy" id="btnBuy">BUY</button><span id="buyNote"></span></div>
+          </div>
+        </section>
         </div>
-      </section>
-
-      <section class="conds">
-        <div class="row"><span class="lbl">START</span><div class="seg" id="segSpot"></div></div>
-        <div class="row"><span class="lbl">WATER</span><span class="world-val" id="worldSea">Light chop</span></div>
-        <div class="row"><span class="lbl">TIME</span><span class="world-val" id="worldTime">12:00</span></div>
-      </section>
-
-      <section class="daily" aria-label="Daily challenges">
-        <div class="row"><span class="lbl">DAILY</span><span class="world-val" id="dailyInfo"></span></div>
-        <ol class="daily-list" id="dailyList"></ol>
-      </section>
-
-      <section class="style" aria-label="Style shop">
-        <div class="row"><span class="lbl">STYLE</span><span class="world-val dim">Everyone online sees your style</span></div>
-        <div class="style-shop" id="styleShop"></div>
-      </section>
-
-      <section class="missions" aria-label="Missions">
-        <div class="row"><span class="lbl">MISSIONS</span><span class="world-val" id="missionCount">0 / 0 done</span></div>
-        <ol class="mission-list" id="missionList"></ol>
-      </section>
-
-      <section class="boards" aria-label="Weekly leaderboard">
-        <div class="row"><span class="lbl">WEEKLY</span><div class="seg" id="boardTabs"><button data-b="tricks">Best trick</button><button data-b="race">Race lap</button></div></div>
-        <ol class="board-list" id="boardList"></ol>
-        <p class="mp-status" id="boardNote"></p>
-      </section>
-
-      <section class="mp" aria-label="Ride online">
-        <div class="row"><span class="lbl">ONLINE</span><div class="seg" id="mpLobbies"><button id="mpL1" disabled>Lobby 1</button><button id="mpL2" disabled>Lobby 2</button></div></div>
-        <div class="row"><label class="lbl" for="mpName">NAME</label><input id="mpName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Your name"></div>
-        <p class="mp-status" id="mpStatus">Connecting…</p>
-        <p class="mp-status mp-stats" id="mpStats"></p>
-      </section>
-
-      <section class="admin" aria-label="Admin">
-        <div class="row" id="adminLock"><span class="lbl">ADMIN</span><input id="adminCode" type="password" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Admin code"><button id="adminGo">UNLOCK</button></div>
-        <div id="adminPanel" hidden>
-          <p class="admin-note">You are the admin. Everything here changes the world for everyone online.</p>
-          <div class="row"><span class="lbl">RIDERS</span><span class="world-val" id="admRiders">Counting…</span></div>
-          <div class="row gift"><span class="lbl">GIFT</span><select id="admGiftTo"><option value="">Nobody online</option></select><input id="admGiftAmt" type="number" min="-1000000" max="1000000" step="100" value="1000" aria-label="Amount (minus takes cash away)" title="Minus takes cash away"><button id="admGift">GIVE</button></div>
-          <div class="row"><span class="lbl">TIME</span><input type="range" id="admTime" min="0" max="24" step="0.25"><span class="world-val" id="admTimeLbl">12:00</span></div>
-          <div class="row"><span class="lbl">CLOCK</span><div class="seg" id="admClock"><button data-s="auto">Normal day</button><button data-s="0">Freeze</button><button data-s="1">Run</button><button data-s="12">Fast</button></div></div>
-          <div class="row"><span class="lbl">WATER</span><div class="seg" id="admSea"></div></div>
-          <div class="row"><span class="lbl">FUN</span><div class="seg wrap" id="admFun"></div></div>
-          <div class="row"><span class="lbl">EVENTS</span><div class="seg wrap"><button id="admHuge">Huge set now</button><button id="admSummon">Everyone to the waves</button><button id="admReset">Reset world</button><button id="admCash">Give me $10,000</button></div></div>
-          <p class="mp-status" id="admStatus"></p>
+        <div class="tab" data-tab="style" role="tabpanel" hidden>
+        <section class="style" aria-label="Style shop">
+          <div class="row"><span class="lbl">STYLE</span><span class="world-val dim">Everyone online sees your style</span></div>
+          <div class="style-shop" id="styleShop"></div>
+        </section>
         </div>
-      </section>
-
-      <div class="menu-actions">
-        <button class="go" id="btnRide">RIDE</button>
-        <button class="ghost" id="btnHelp">CONTROLS</button>
+        <div class="tab" data-tab="map" role="tabpanel" hidden>
+        <section class="maps" aria-label="Choose a map">
+          <div class="row"><span class="lbl">MAP</span><div class="seg wrap" id="segMap"></div></div>
+          <p class="map-info" id="mapInfo"></p>
+        </section>
+        <section class="conds">
+          <div class="row"><span class="lbl">START</span><div class="seg" id="segSpot"></div></div>
+          <div class="row"><span class="lbl">WATER</span><span class="world-val" id="worldSea">Light chop</span></div>
+          <div class="row"><span class="lbl">TIME</span><span class="world-val" id="worldTime">12:00</span></div>
+        </section>
+        </div>
+        <div class="tab" data-tab="progress" role="tabpanel" hidden>
+        <section class="daily" aria-label="Daily challenges">
+          <div class="row"><span class="lbl">DAILY</span><span class="world-val" id="dailyInfo"></span></div>
+          <ol class="daily-list" id="dailyList"></ol>
+        </section>
+        <section class="missions" aria-label="Missions">
+          <div class="row"><span class="lbl">MISSIONS</span><span class="world-val" id="missionCount">0 / 0 done</span></div>
+          <ol class="mission-list" id="missionList"></ol>
+        </section>
+        <section class="boards" aria-label="Weekly leaderboard">
+          <div class="row"><span class="lbl">WEEKLY</span><div class="seg" id="boardTabs"><button data-b="tricks">Best trick</button><button data-b="race">Race lap</button></div></div>
+          <ol class="board-list" id="boardList"></ol>
+          <p class="mp-status" id="boardNote"></p>
+        </section>
+        </div>
+        <div class="tab" data-tab="online" role="tabpanel" hidden>
+        <section class="mp" aria-label="Ride online">
+          <div class="row"><span class="lbl">ONLINE</span><div class="seg" id="mpLobbies"><button id="mpL1" disabled>Lobby 1</button><button id="mpL2" disabled>Lobby 2</button></div></div>
+          <div class="row"><label class="lbl" for="mpName">NAME</label><input id="mpName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Your name"></div>
+          <p class="mp-status" id="mpStatus">Connecting…</p>
+          <p class="mp-status mp-stats" id="mpStats"></p>
+        </section>
+        <section class="admin" aria-label="Admin">
+          <div class="row" id="adminLock"><span class="lbl">ADMIN</span><input id="adminCode" type="password" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Admin code"><button id="adminGo">UNLOCK</button></div>
+          <div id="adminPanel" hidden>
+            <p class="admin-note">You are the admin. Everything here changes the world for everyone online.</p>
+            <div class="row"><span class="lbl">RIDERS</span><span class="world-val" id="admRiders">Counting…</span></div>
+            <div class="row gift"><span class="lbl">GIFT</span><select id="admGiftTo"><option value="">Nobody online</option></select><input id="admGiftAmt" type="number" min="-1000000" max="1000000" step="100" value="1000" aria-label="Amount (minus takes cash away)" title="Minus takes cash away"><button id="admGift">GIVE</button></div>
+            <div class="row"><span class="lbl">TIME</span><input type="range" id="admTime" min="0" max="24" step="0.25"><span class="world-val" id="admTimeLbl">12:00</span></div>
+            <div class="row"><span class="lbl">CLOCK</span><div class="seg" id="admClock"><button data-s="auto">Normal day</button><button data-s="0">Freeze</button><button data-s="1">Run</button><button data-s="12">Fast</button></div></div>
+            <div class="row"><span class="lbl">WATER</span><div class="seg" id="admSea"></div></div>
+            <div class="row"><span class="lbl">FUN</span><div class="seg wrap" id="admFun"></div></div>
+            <div class="row"><span class="lbl">EVENTS</span><div class="seg wrap"><button id="admHuge">Huge set now</button><button id="admSummon">Everyone to the waves</button><button id="admReset">Reset world</button><button id="admCash">Give me $10,000</button></div></div>
+            <p class="mp-status" id="admStatus"></p>
+          </div>
+        </section>
+        </div>
       </div>
+    </div>
+
+    <!-- always in reach: ride, controls -->
+    <div class="menu-side">
+      <button class="go" id="btnRide">RIDE</button>
+      <button class="ghost" id="btnHelp">CONTROLS</button>
       <p class="credit">Made by <b>Barsa</b></p>
+    </div>
+
+    <!-- pressing RIDE: where to ride -->
+    <div id="lobbyPick" hidden>
+      <div class="pick-panel" role="dialog" aria-label="Where to ride">
+        <h2>WHERE TO RIDE?</h2>
+        <div class="pick-list" id="pickList"></div>
+        <p class="mp-status" id="pickNote"></p>
+        <button class="link" id="pickClose">Back</button>
+      </div>
     </div>
   </div>
 

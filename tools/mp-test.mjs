@@ -10,7 +10,7 @@ try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require(
 const out = process.argv[2] || '.';
 const srv = await serve();
 const mode = process.argv[3] || 'fake';
-const url = `http://localhost:${srv.address().port}/index.html?pr=1&${mode === 'fbemu' ? 'fbemu=9000' : 'mpfake=1'}&tod=1&sea=1`;
+const url = `http://localhost:${srv.address().port}/index.html?pr=1&${mode === 'fbemu' ? 'fbemu=9000' : 'mpfake=1'}&tod=1&sea=1&nopick=1`;
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const ctx = await browser.newContext({ viewport: { width: 960, height: 540 } });
 const open = async (name, ski) => {

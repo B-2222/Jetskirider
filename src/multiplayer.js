@@ -535,6 +535,9 @@ export class Multiplayer {
   // Everyone starts in Lobby 1 (Lobby 2 if it is full), once, shortly after
   // connecting; leave it and you stay out.
   autoJoin() {
+    // the player picks a lobby when they press RIDE (?autolobby=1: join
+    // Lobby 1 by itself, as before)
+    if (!new URLSearchParams(location.search).get('autolobby')) return;
     if (this.autoTried || this.lobbyId) return;
     this.autoTried = true;
     setTimeout(async () => {

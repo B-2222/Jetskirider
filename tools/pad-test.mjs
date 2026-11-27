@@ -20,7 +20,7 @@ await page.addInitScript(() => {
   navigator.getGamepads = () => [pad, null, null, null];
   window.__set = (o) => { const P = window.__pad; P.buttons = btn(); if (o.axes) P.axes = o.axes.slice(); for (const [i, v] of Object.entries(o.b || {})) P.buttons[i] = { pressed: v > 0.5, touched: v > 0, value: v }; };
 });
-await page.goto(`http://localhost:${srv.address().port}/index.html?pr=1&tod=1&sea=1&ski=gti`);
+await page.goto(`http://localhost:${srv.address().port}/index.html?pr=1&tod=1&sea=1&ski=gti&nopick=1`);
 await page.waitForFunction('window.game && window.game.frames > 0', null, { timeout: 120000 });
 await page.evaluate(() => { const g = window.game; g.renderer.setAnimationLoop(null); g.fixedQuality = true; g.noRender = true; g.__now = performance.now();
   window.__adv = (s) => { const n = Math.round(s * 60); for (let i = 0; i < n; i++) { g.__now += 1000 / 60; g.frame(g.__now); } }; });
