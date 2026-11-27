@@ -20,6 +20,10 @@ import { SURF } from './surf.js';
 import { MAPS, mapById, applyMap } from './maps.js';
 import { Career, START_SKI, CASH_PER_POINT, RACE_PAY, SPRAY_PAY, money } from './career.js';
 import { Accounts, authError } from './accounts.js';
+import { SHOP, itemOf, skiLook, applyFinish, riderLook } from './cosmetics.js';
+import { MAX_LEVEL, xpFor, trickXp, titleFor, PRESTIGE_BONUS } from './levels.js';
+import { dayNow, msToNextDay, SWEEP_PAY } from './daily.js';
+import { Boards, thisWeek } from './boards.js';
 import { MISSIONS, checkMissions } from './missions.js';
 import { Race, clock, QUEUE_S } from './races.js';
 import { Rain } from './rain.js';
@@ -212,6 +216,7 @@ class Game {
     // an email account keeps it (on the Firebase build)
     this.accounts = new Accounts(this.career);
     this.accounts.onChange = () => this.onAccount();
+    this.boards = new Boards(this.accounts);
     this.careerKey = this.career.key;
     // the garage in price order
     this.order = SKIS.map((s, i) => i).sort((a, b) => (SKIS[a].price || 0) - (SKIS[b].price || 0));
@@ -356,7 +361,10 @@ class Game {
     const spec = this.spec;
     const cwI = this.cwIndex[spec.id] ?? clamp(parseInt(store.get('cw-' + spec.id, '0'), 10) || 0, 0, spec.colorways.length - 1);
     this.cwIndex[spec.id] = cwI;
-    const cw = spec.colorways[cwI];
+    // your style: a wrap over the colourway, an outfit, a jet colour
+    const eq = this.career.data.eq;
+    const look = skiLook(spec, cwI, eq.wrap);
+    const cw = look.cw;
     if (this.model) {
       this.skiGroup.remove(this.model.group);
       this.model.dispose();
@@ -366,9 +374,12 @@ class Game {
       this.rider.dispose();
     }
     this.model = new JetskiModel(spec, cw);
+    applyFinish(this.model.group, look.finish, cw);
     this.skiGroup.add(this.model.group);
-    this.rider = new Rider(cw);
+    this.rider = new Rider(riderLook(cw, eq.fit));
     this.skiGroup.add(this.rider.group);
+    const jet = eq.jet && itemOf('jet', eq.jet);
+    this.effects.jet.setTint(jet ? (jet.rainbow ? 'rainbow' : jet.color) : null);
     this.phys.setSpec(spec);
     this.audio.setSpec(spec);
     this.ocean.uniforms.uSkiDim.value.set(spec.L * 0.56, spec.B * 0.62);
@@ -433,7 +444,12 @@ class Game {
   // ------------------------------------------------------------- money
   // Storm Coast's danger pay doubles up everything except missions
   mapMult() {
-    return MAP.bonus.id === 'all' ? 1.5 : 1;
+    return (MAP.bonus.id === 'all' ? 1.5 : 1) * this.starMult();
+  }
+
+  // every prestige star: +10% cash for good
+  starMult() {
+    return 1 + this.career.data.pr * PRESTIGE_BONUS;
   }
 
   // a trick's points turn into cash (with the map's bonus where it applies)
@@ -443,7 +459,14 @@ class Game {
     let mult = 1;
     if ((b === 'ramp' && info.ramp) || (b === 'wave' && info.wave) || (b === 'flat' && (info.water || info.flat))) mult = 2;
     else if (b === 'all') mult = 1.5;
-    const cash = this.career.earn(pts * CASH_PER_POINT * mult + (info.spray ? SPRAY_PAY * this.mapMult() : 0));
+    const cash = this.career.earn(pts * CASH_PER_POINT * mult * this.starMult() + (info.spray ? SPRAY_PAY * this.mapMult() : 0));
+    this.gainXp(trickXp(pts));
+    // the daily challenges and this week's best trick
+    this.dailyEvent('pts', pts);
+    if (info.air) this.dailyEvent('air', info.air);
+    if (info.ramp) this.dailyEvent('ramp', 1);
+    if (info.spray) this.dailyEvent('spray', 1);
+    this.weekTrick(pts);
     return { cash, mult };
   }
 
@@ -452,7 +475,122 @@ class Game {
     for (const m of done) {
       this.career.earn(m.pay);
       this.toast('MISSION COMPLETE', m.text, m.pay);
+      this.gainXp(Math.round(m.pay / 8));
     }
+    if (ev === 'trick' || ev === 'combo') this.dailyEvent(ev, v);
+  }
+
+  // ------------------------------------------------------------- levels
+  gainXp(n) {
+    const C = this.career;
+    for (const u of C.addXp(n)) {
+      const unlocked = SHOP.flatMap((s) => s.items.filter((i) => i.lv === u.lv && C.data.pr === 0).map((i) => i.name + ' ' + s.title.toLowerCase()));
+      this.toast('LEVEL ' + u.lv, (u.title ? 'New title: ' + u.title : 'Level up!') + (unlocked.length ? ' · Unlocked: ' + unlocked.join(', ') : ''), u.pay);
+      if (u.lv >= MAX_LEVEL) this.toast('LEVEL ' + MAX_LEVEL, 'You can PRESTIGE in the garage: a star and +10% cash for good', 0);
+    }
+    this.refreshLevelUi();
+  }
+
+  refreshLevelUi() {
+    const d = this.career.data;
+    const frac = d.lv >= MAX_LEVEL ? 1 : d.xp / xpFor(d.lv);
+    const stars = d.pr ? '★' + d.pr + ' ' : '';
+    const lbl = stars + 'LV ' + d.lv;
+    if (this.ui && this.uiCache.lv !== lbl) {
+      this.uiCache.lv = lbl;
+      $('lvLbl').textContent = lbl;
+    }
+    if (this.ui) $('xpFill').style.transform = `scaleX(${frac.toFixed(3)})`;
+    $('mLevel').textContent = stars + 'LV ' + d.lv + ' · ' + titleFor(d.lv);
+    $('mXpFill').style.transform = `scaleX(${frac.toFixed(3)})`;
+    $('mXpText').textContent = d.lv >= MAX_LEVEL ? 'Max level' : d.xp.toLocaleString() + ' / ' + xpFor(d.lv).toLocaleString() + ' XP';
+    $('btnPrestige').hidden = !this.career.canPrestige();
+  }
+
+  // ------------------------------------------------------------- daily
+  dailyEvent(ev, v) {
+    const r = this.career.dailyEvent(dayNow(), ev, v, MAP.id);
+    for (const c of r.done) {
+      this.career.earn(c.pay);
+      this.gainXp(500);
+      this.toast('DAILY CHALLENGE', c.text, c.pay);
+    }
+    if (r.sweep) {
+      this.career.earn(SWEEP_PAY);
+      this.gainXp(1500);
+      this.toast('ALL 3 DAILIES DONE', 'Come back tomorrow for new ones', SWEEP_PAY);
+    }
+    if (r.done.length && this.state === 'menu') this.refreshDailyUi();
+  }
+
+  refreshDailyUi() {
+    const list = this.career.today(dayNow());
+    const ol = $('dailyList');
+    const html = list
+      .map((c) => {
+        const pct = Math.min(1, c.prog / c.n);
+        const shown = c.n >= 1000 ? Math.floor(c.prog).toLocaleString() + ' / ' + c.n.toLocaleString() : Math.floor(c.prog) + ' / ' + c.n;
+        return `<li class="${c.done ? 'done' : ''}"><span>${c.text}</span><b>${money(c.pay)}</b><i style="transform:scaleX(${pct.toFixed(3)})"></i><small>${c.done ? 'Done' : shown}</small></li>`;
+      })
+      .join('');
+    if (ol.innerHTML !== html) ol.innerHTML = html;
+    const ms = msToNextDay();
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const st = this.career.data.streak;
+    const streak = st.last >= dayNow() - 1 && st.n > 0 ? ' · streak ' + st.n + (st.n === 1 ? ' day' : ' days') : '';
+    $('dailyInfo').textContent = 'New in ' + h + 'h ' + m + 'm' + streak;
+  }
+
+  // the first ride of the day keeps the streak going
+  checkStreak() {
+    const n = this.career.streakTick(dayNow());
+    if (!n) return;
+    const pay = this.career.streakPay(n);
+    this.career.earn(pay);
+    this.toast(n > 1 ? 'DAY ' + n + ' STREAK' : 'WELCOME BACK', n > 1 ? 'Ride every day for a bigger bonus (up to day 10)' : 'Ride tomorrow to start a streak', pay);
+  }
+
+  // ------------------------------------------------------------- leaderboards
+  weekTrick(pts) {
+    const wk = this.career.week(thisWeek());
+    if (pts <= wk.tricks) return;
+    wk.tricks = pts;
+    this.career.save();
+    clearTimeout(this.wkTimer);
+    this.wkTimer = setTimeout(() => this.boards.submit('tricks', wk.tricks, this.mp.nick), 4000);
+  }
+
+  weekRace(time) {
+    const wk = this.career.week(thisWeek());
+    const prev = wk.race[MAP.id];
+    if (prev && prev <= time) return;
+    wk.race[MAP.id] = time;
+    this.career.save();
+    this.boards.submit('race-' + MAP.id, time, this.mp.nick);
+  }
+
+  async refreshBoardUi() {
+    const kind = this.boardKind || 'tricks';
+    const board = kind === 'tricks' ? 'tricks' : 'race-' + MAP.id;
+    for (const b of $('boardTabs').children) b.setAttribute('aria-pressed', b.dataset.b === kind ? 'true' : 'false');
+    const note = $('boardNote');
+    if (this.accounts.state === 'off') {
+      note.textContent = 'Leaderboards are on the web version of the game.';
+      $('boardList').textContent = '';
+      return;
+    }
+    note.textContent = this.accounts.state === 'in' ? 'Resets every Monday. Top 3 wear a crown online.' : 'Sign up to get on the leaderboard. Resets every Monday.';
+    const rows = await this.boards.top(board, 8000);
+    const fmt = (v) => (kind === 'tricks' ? Math.round(v).toLocaleString() : clock(v));
+    const ol = $('boardList');
+    if ((this.boardKind || 'tricks') !== kind) return;
+    ol.innerHTML = rows.length ? rows.map((r, i) => `<li class="${r.me ? 'me' : ''}${i < 3 ? ' top' + (i + 1) : ''}"><span>${i + 1}. ${r.name}</span><b>${fmt(r.v)}</b></li>`).join('') : '<li class="empty">Nobody yet this week. Be first!</li>';
+  }
+
+  // a crown online if I am top 3 this week (checked now and then)
+  async checkCrown() {
+    this.crown = await this.boards.crown(['tricks', 'race-' + MAP.id]);
   }
 
   // a message across the top: missions, purchases, race results
@@ -594,6 +732,10 @@ class Game {
       const ord = (k) => k + (['th', 'st', 'nd', 'rd'][k % 100 > 10 && k % 100 < 14 ? 0 : Math.min(k % 10, 4) % 4] || 'th');
       this.banner(field > 1 ? ord(place + 1).toUpperCase() + ' · ' + clock(d.time) : medal + ' · ' + clock(d.time), 2.6);
       this.toast(race.name.toUpperCase(), (field > 1 ? ord(place + 1) + ' of ' + field + ' · ' : '') + medal.charAt(0) + medal.slice(1).toLowerCase() + ' in ' + clock(d.time) + (best ? ' · new best!' : ''), pay);
+      this.gainXp(300 + Math.max(0, d.medal) * 150 + beaten * 200);
+      this.dailyEvent('race', 1);
+      if (d.medal === 2) this.dailyEvent('gold', 1);
+      this.weekRace(d.time);
       this.missionEvent('race', d.medal);
       this.missionEvent('golds', Object.values(this.career.data.races).filter((r) => r.medal === 2).length);
       if (place === 0 && field > 1) this.missionEvent('racewin', 1);
@@ -1070,7 +1212,117 @@ class Game {
     this.missionEvent('owned', this.career.data.owned.length);
     this.refreshCareerUi();
     this.setupAccountUi();
+    this.setupEndgameUi();
     this.accounts.init();
+  }
+
+  // ------------------------------------------------------------- style shop,
+  // prestige and the weekly leaderboard (garage)
+  setupEndgameUi() {
+    const shop = $('styleShop');
+    for (const cat of SHOP) {
+      const row = document.createElement('div');
+      row.className = 'style-row';
+      const l = document.createElement('span');
+      l.className = 'lbl';
+      l.textContent = cat.title;
+      const seg = document.createElement('div');
+      seg.className = 'seg wrap';
+      seg.dataset.kind = cat.kind;
+      for (const it of [{ id: '', name: cat.kind === 'wrap' ? 'Stock paint' : 'Stock' }, ...cat.items]) {
+        const b = document.createElement('button');
+        b.dataset.id = it.id;
+        b.addEventListener('click', () => this.styleClick(cat.kind, it.id, b));
+        seg.appendChild(b);
+      }
+      row.append(l, seg);
+      shop.appendChild(row);
+    }
+    $('btnPrestige').addEventListener('click', () => {
+      const b = $('btnPrestige');
+      if (!b.classList.contains('arm')) {
+        b.classList.add('arm');
+        b.textContent = 'SURE? BACK TO LEVEL 1 · +10% CASH';
+        setTimeout(() => {
+          b.classList.remove('arm');
+          this.refreshLevelUi();
+        }, 4000);
+        return;
+      }
+      if (this.career.prestige()) this.toast('PRESTIGE ★' + this.career.data.pr, 'Back to level 1 with +' + this.career.data.pr * 10 + '% cash for good', 0);
+      b.classList.remove('arm');
+      this.refreshLevelUi();
+    });
+    for (const b of $('boardTabs').children) {
+      b.addEventListener('click', () => {
+        this.boardKind = b.dataset.b;
+        this.refreshBoardUi();
+      });
+    }
+  }
+
+  // tap an item: wear it if you have it, otherwise tap again to buy it
+  styleClick(kind, id, btn) {
+    const C = this.career;
+    if (!id || C.hasCos(kind, id)) {
+      C.wear(kind, id || null);
+      this.styleArmed = null;
+      this.afterStyle(kind);
+      return;
+    }
+    const it = itemOf(kind, id);
+    if (this.styleArmed !== kind + ':' + id) {
+      this.styleArmed = kind + ':' + id;
+      this.refreshStyleUi();
+      return;
+    }
+    const r = C.buyCos(kind, id);
+    this.styleArmed = null;
+    if (r === 'poor') this.toast('NOT YET', 'You need ' + money(it.price - C.cash) + ' more for ' + it.name, 0);
+    else if (r === 'ok') this.toast('NEW STYLE', it.name + ' is yours', 0);
+    this.afterStyle(kind);
+  }
+
+  afterStyle(kind) {
+    if (kind !== 'tag') this.buildSki();
+    this.refreshMenu();
+  }
+
+  refreshStyleUi() {
+    const C = this.career;
+    for (const seg of $('styleShop').querySelectorAll('.seg')) {
+      const kind = seg.dataset.kind;
+      const worn = C.data.eq[kind] || '';
+      for (const b of seg.children) {
+        const id = b.dataset.id;
+        const it = id ? itemOf(kind, id) : null;
+        const has = !id || C.hasCos(kind, id);
+        const armed = this.styleArmed === kind + ':' + id;
+        const sub = !id ? '' : armed ? 'BUY ' + money(it.price) + '?' : has ? (worn === id ? 'WEARING' : 'OWNED') : it.lv && C.data.pr === 0 ? money(it.price) + ' · free at LV ' + it.lv : money(it.price);
+        const chip = it && (it.color !== undefined || it.cw) ? (typeof it.color === 'string' ? (it.color === 'rainbow' ? 'linear-gradient(90deg,#ff5f5f,#ffc531,#9dff3a,#5fd4ff)' : it.color) : it.rainbow ? 'linear-gradient(90deg,#ff5f5f,#ffc531,#9dff3a,#5fd4ff)' : '#' + new THREE.Color(it.cw ? it.cw.deck : it.color).getHexString()) : '';
+        const key = sub + '|' + (worn === id) + '|' + armed;
+        if (b._key === key) continue;
+        b._key = key;
+        b.textContent = '';
+        const name = document.createElement('span');
+        if (chip) {
+          const c = document.createElement('span');
+          c.className = 'chip';
+          c.style.background = chip;
+          name.appendChild(c);
+        }
+        name.append(it ? it.name : id === '' ? (kind === 'wrap' ? 'Stock paint' : 'Stock') : '');
+        b.appendChild(name);
+        if (sub) {
+          const sm = document.createElement('small');
+          sm.textContent = sub;
+          if (has && !armed) sm.className = 'own';
+          b.appendChild(sm);
+        }
+        b.setAttribute('aria-pressed', worn === id ? 'true' : 'false');
+        b.classList.toggle('arm', armed);
+      }
+    }
   }
 
   // ------------------------------------------------------------- account
@@ -1284,6 +1536,14 @@ class Game {
       this.missionEls[i].style.order = done ? 100 + i : i;
     });
     $('missionCount').textContent = nDone + ' / ' + MISSIONS.length + ' done';
+    this.refreshLevelUi();
+    this.refreshDailyUi();
+    this.refreshStyleUi();
+    $('boardTabs').children[1].textContent = 'Race lap · ' + MAP.name.split(' ').map((w) => w[0] + w.slice(1).toLowerCase()).join(' ');
+    if (!this.boardAt || performance.now() - this.boardAt > 20000) {
+      this.boardAt = performance.now();
+      this.refreshBoardUi();
+    }
     $('wallet').textContent = money(C.cash);
     $('mName').textContent = s.name;
     $('mTag').textContent = s.tagline;
@@ -1330,7 +1590,8 @@ class Game {
       });
       cols.appendChild(b);
     });
-    $('mColorName').textContent = s.colorways[cwI].name;
+    const wrapOn = this.career.data.eq.wrap && itemOf('wrap', this.career.data.eq.wrap);
+    $('mColorName').textContent = wrapOn ? wrapOn.name + ' wrap on (STYLE below)' : s.colorways[cwI].name;
     if (this.spotIndex !== undefined) {
       const rs = this.race.startSpot();
       const p = this.phys;
@@ -1351,6 +1612,7 @@ class Game {
     this.state = 'ride';
     this.hasRidden = true;
     this.accounts.countRider();
+    this.checkStreak();
     $('menu').hidden = true;
     $('help').hidden = true;
     $('hud').hidden = false;
@@ -1581,6 +1843,7 @@ class Game {
     $('hud').hidden = true;
     $('touch').hidden = true;
     this.cam.orbit = this.cam.yaw + 0.5;
+    this.boardAt = 0; // fresh leaderboard each time the garage opens
     this.refreshMenu();
   }
 
@@ -2322,6 +2585,12 @@ class Game {
       else {
         this.tricks.update(dt, p);
         this.checkWipeout(dt);
+        // top 3 this week? (a crown over your name online)
+        this.crownT = (this.crownT ?? 5) - dt;
+        if (this.crownT <= 0) {
+          this.crownT = 90;
+          if (this.accounts.state === 'in') this.checkCrown();
+        }
         this.missionT = (this.missionT || 0) - dt;
         if (this.missionT <= 0) {
           this.missionT = 0.25;

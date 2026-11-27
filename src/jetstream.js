@@ -32,11 +32,11 @@ function nearFade(dist, w) {
   return t * t * (3 - 2 * t);
 }
 
-let sharedMat = null;
+// One material per stream: the lighting uniforms are shared, the colour
+// (a rider's jet colour from the style shop) is the stream's own.
 function material(uniforms) {
-  if (sharedMat) return sharedMat;
-  sharedMat = new THREE.ShaderMaterial({
-    uniforms,
+  return new THREE.ShaderMaterial({
+    uniforms: { ...uniforms, uTint: { value: new THREE.Color(1, 1, 1) }, uTintK: { value: 0 } },
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -66,6 +66,8 @@ function material(uniforms) {
       uniform vec3 uSunDir;
       uniform vec3 uSunColor;
       uniform float uRainbow;
+      uniform vec3 uTint;
+      uniform float uTintK; // 0 white water, > 0 tinted, < 0 rainbow
       varying vec2 vUv;
       varying vec4 vDat;
       varying vec3 vWorld;
@@ -114,12 +116,13 @@ function material(uniforms) {
         col += uSunColor * glow * (0.7 + 0.8 * brk);
         // admin extra: rainbow spray, the colours running along the stream
         col = mix(col, hue(fract(vUv.y * 0.9 + x * 0.08)) * (0.55 + 0.6 * lit), uRainbow * 0.7);
+        if (uTintK > 0.0) col = mix(col, uTint * (0.5 + 0.7 * lit) + uSunColor * glow * 0.3, uTintK);
+        else if (uTintK < 0.0) col = mix(col, hue(fract(vUv.y * 0.9 + x * 0.08)) * (0.6 + 0.6 * lit), 0.72);
         gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
   });
-  return sharedMat;
 }
 
 export class JetStream {
@@ -173,6 +176,18 @@ export class JetStream {
 
   dispose() {
     this.geo.dispose();
+    this.mesh.material.dispose();
+  }
+
+  // a jet colour: a hex number, 'rainbow', or null for white water
+  setTint(c) {
+    const u = this.mesh.material.uniforms;
+    if (c === 'rainbow') u.uTintK.value = -1;
+    else if (c === null || c === undefined) u.uTintK.value = 0;
+    else {
+      u.uTint.value.setHex(c);
+      u.uTintK.value = 0.62;
+    }
   }
 
   clear() {

@@ -104,6 +104,13 @@ You start on the Spark Trixx with $500. The garage lists every ski in price orde
 
 TRIM-X kits are bought per sit-down ski. Stage 1 extends the trim range for a proper rooster tail, Stage 2 trims even further for a massive one (the Trixx has Stage 1 built in). A ski without a kit rides exactly as before.
 
+## Levels, daily challenges, style and the weekly leaderboard
+
+- **Levels 1 to 50**: XP from every trick (worked out per trick, so combos do not skip the climb), races, missions and daily challenges. Each level pays cash, every five levels give a new title (Grom, Rookie, Wave Rat... Sea-Doo God) shown with your name online, and some style items unlock free. At 50 you can **prestige**: back to level 1 with a star (up to 10) and +10% cash for good per star.
+- **Daily challenges**: three a day, the same for everyone, new at midnight Perth time, with a bonus for doing all three. Riding on days in a row builds a streak bonus (up to day 10).
+- **Style shop**: ski wraps (Hot Pink, Carbon, Neon Glow, Chrome, Solid Gold), jet stream colours (including Rainbow), outfits and name tag colours. Everyone online sees them.
+- **Weekly leaderboard**: the biggest single trick of the week and the fastest lap on each map's race, Monday to Sunday (Perth time). You need an account to be on it; the top 3 wear a crown over their name online.
+
 ## Maps
 
 Pick the map in the garage (the game reloads into it). Riders online only see others on the same map; the leaderboard shows who is where.

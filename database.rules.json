@@ -19,6 +19,22 @@
         ".validate": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
       }
     },
+    "boards": {
+      ".read": true,
+      "$week": {
+        "$board": {
+          ".indexOn": ["v"],
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && $week.matches(/^w[0-9]{4,6}$/) && $board.matches(/^(tricks|race-(bay|reef|lake|storm))$/)",
+            ".validate": "newData.hasChildren(['n', 'v', 't'])",
+            "n": { ".validate": "newData.isString() && newData.val().length <= 16" },
+            "v": { ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() < 10000000" },
+            "t": { ".validate": "newData.val() === now" },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    },
     "accounts": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

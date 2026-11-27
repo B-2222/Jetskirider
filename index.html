@@ -28,6 +28,7 @@
         <div class="score-row"><span class="lbl">SCORE</span><span class="val" id="score">0</span></div>
         <div class="score-row dim"><span class="lbl">BEST</span><span class="val" id="best">0</span></div>
         <div class="score-row cash-row"><span class="lbl">CASH</span><span class="val" id="cash">$0</span></div>
+        <div class="score-row lv-row"><span class="lbl" id="lvLbl">LV 1</span><span class="xpbar"><i id="xpFill"></i></span></div>
       </div>
       <div class="hud-btns">
         <button class="icon-btn" id="btnChat" title="Chat (Enter)" hidden>CHAT</button>
@@ -109,6 +110,7 @@
           <div class="wallet" title="Your cash"><span class="lbl">CASH</span><b id="wallet">$0</b></div>
           <div class="account" id="account" hidden><span id="accountText">Guest</span><button id="btnAccount">SIGN UP / LOG IN</button></div>
         </div>
+        <div class="level"><b id="mLevel">LV 1 · Grom</b><span class="xpbar"><i id="mXpFill"></i></span><small id="mXpText"></small><button id="btnPrestige" hidden>PRESTIGE</button></div>
       </header>
 
       <section class="maps" aria-label="Choose a map">
@@ -134,9 +136,25 @@
         <div class="row"><span class="lbl">TIME</span><span class="world-val" id="worldTime">12:00</span></div>
       </section>
 
+      <section class="daily" aria-label="Daily challenges">
+        <div class="row"><span class="lbl">DAILY</span><span class="world-val" id="dailyInfo"></span></div>
+        <ol class="daily-list" id="dailyList"></ol>
+      </section>
+
+      <section class="style" aria-label="Style shop">
+        <div class="row"><span class="lbl">STYLE</span><span class="world-val dim">Everyone online sees your style</span></div>
+        <div class="style-shop" id="styleShop"></div>
+      </section>
+
       <section class="missions" aria-label="Missions">
         <div class="row"><span class="lbl">MISSIONS</span><span class="world-val" id="missionCount">0 / 0 done</span></div>
         <ol class="mission-list" id="missionList"></ol>
+      </section>
+
+      <section class="boards" aria-label="Weekly leaderboard">
+        <div class="row"><span class="lbl">WEEKLY</span><div class="seg" id="boardTabs"><button data-b="tricks">Best trick</button><button data-b="race">Race lap</button></div></div>
+        <ol class="board-list" id="boardList"></ol>
+        <p class="mp-status" id="boardNote"></p>
       </section>
 
       <section class="mp" aria-label="Ride online">
@@ -226,6 +244,10 @@
         <li><b>TRIM-X:</b> a kit for each sit-down ski. Stage 1 adds trim range for a proper rooster tail; Stage 2 trims even further for a massive one. Trim up with <kbd>E</kbd>.</li>
         <li><b>Maps:</b> Palm Bay, Thunder Reef (giant fast surf), Glass Lake (flat water and quick rollers) and Storm Coast (rough, rain, heavy surf). Each one has its own cash bonus.</li>
         <li><b>Buoy race:</b> ride into the glowing race circle (follow the green RACE arrow at the top, or pick <i>Race circle</i> in the garage) and stay in it for 10 seconds. Anyone in the circle with you races you. Everyone goes to the start line, then 3, 2, 1, GO: cross the start line, take every gate in order and come back to the finish. Follow the green arrow over your ski. Faster times win better medals, and beating mates pays extra.</li>
+        <li><b>Levels:</b> everything you do earns XP. Every level pays cash, every five give you a new title, and some style items unlock free. At level 50 you can PRESTIGE: back to level 1 with a star and +10% cash for good.</li>
+        <li><b>Daily:</b> three new challenges every day (the same for everyone, new at midnight Perth time), a bonus for finishing all three, and a streak bonus for riding on days in a row.</li>
+        <li><b>Style:</b> ski wraps, jet colours, outfits and name tags. Tap once to see the price, tap again to buy; tap something you own to wear it. Everyone online sees your style.</li>
+        <li><b>Weekly leaderboard:</b> the biggest trick of the week and the fastest lap on each map. You need an account to be on it. The top 3 wear a crown online. It resets every Monday.</li>
         <li><b>Account:</b> SIGN UP in the garage with your email and a password and your progress saves to your account. Log in on any device to carry on.</li>
       </ul>
       <h3>TRICKS</h3>

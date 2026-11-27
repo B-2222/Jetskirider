@@ -5,6 +5,9 @@
 // for the session.
 
 import { SKIS, TRIMX, trimxBase } from './specs.js';
+import { MAX_LEVEL, MAX_PRESTIGE, xpFor, levelPay, newTitleAt } from './levels.js';
+import { dailyFor, dailyStep, SWEEP_PAY, streakPay } from './daily.js';
+import { itemOf } from './cosmetics.js';
 
 const KEY = 'jetski-rider-career';
 export const START_SKI = 'trixx';
@@ -58,7 +61,15 @@ export class Career {
 
   // keep only what we understand, in range
   static clean(d) {
-    const fresh = { v: 1, cash: START_CASH, earned: 0, owned: [START_SKI], trimx: {}, missions: {}, races: {}, stats: { maps: {}, sprays: 0, races: 0, golds: 0 } };
+    const fresh = {
+      v: 1, cash: START_CASH, earned: 0, owned: [START_SKI], trimx: {}, missions: {}, races: {}, stats: { maps: {}, sprays: 0, races: 0, golds: 0 },
+      lv: 1, xp: 0, pr: 0, // level, XP into it, prestige stars
+      daily: { day: 0, prog: {}, done: {}, sweep: false },
+      streak: { last: 0, n: 0 },
+      cos: [], // style items bought, as 'kind:id'
+      eq: {}, // style items worn: { wrap, jet, fit, tag }
+      wk: { w: 0, tricks: 0, race: {} }, // this week's bests (leaderboards)
+    };
     if (!d || typeof d !== 'object') return fresh;
     // keep only what we understand
     const out = fresh;
@@ -74,6 +85,25 @@ export class Career {
       const s = d.stats;
       if (s.maps && typeof s.maps === 'object') for (const k of Object.keys(s.maps)) out.stats.maps[k] = true;
       for (const k of ['sprays', 'races', 'golds']) if (Number.isFinite(s[k])) out.stats[k] = s[k];
+    }
+    const int = (v, lo, hi, d) => (Number.isInteger(v) && v >= lo && v <= hi ? v : d);
+    out.lv = int(d.lv, 1, MAX_LEVEL, 1);
+    out.xp = int(d.xp, 0, 1e7, 0);
+    out.pr = int(d.pr, 0, MAX_PRESTIGE, 0);
+    if (d.daily && typeof d.daily === 'object') {
+      const y = d.daily;
+      out.daily.day = int(y.day, 0, 1e6, 0);
+      out.daily.sweep = y.sweep === true;
+      if (y.prog && typeof y.prog === 'object') for (const [k, v] of Object.entries(y.prog)) if (Number.isFinite(v)) out.daily.prog[k.slice(0, 16)] = v;
+      if (y.done && typeof y.done === 'object') for (const k of Object.keys(y.done)) out.daily.done[k.slice(0, 16)] = true;
+    }
+    if (d.streak && typeof d.streak === 'object') out.streak = { last: int(d.streak.last, 0, 1e6, 0), n: int(d.streak.n, 0, 1e5, 0) };
+    if (Array.isArray(d.cos)) out.cos = [...new Set(d.cos.filter((k) => typeof k === 'string' && itemOf(...k.split(':'))))];
+    if (d.eq && typeof d.eq === 'object') for (const k of ['wrap', 'jet', 'fit', 'tag']) if (typeof d.eq[k] === 'string' && itemOf(k, d.eq[k])) out.eq[k] = d.eq[k];
+    if (d.wk && typeof d.wk === 'object') {
+      out.wk.w = int(d.wk.w, 0, 1e6, 0);
+      out.wk.tricks = Number.isFinite(d.wk.tricks) ? d.wk.tricks : 0;
+      if (d.wk.race && typeof d.wk.race === 'object') for (const [k, v] of Object.entries(d.wk.race)) if (Number.isFinite(v)) out.wk.race[k.slice(0, 8)] = v;
     }
     return out;
   }
@@ -179,6 +209,121 @@ export class Career {
   spray() {
     this.data.stats.sprays++;
     this.save();
+  }
+
+  // ------------------------------------------------------------ levels
+  // returns the level-ups this XP caused: [{ lv, pay, title }]
+  addXp(n) {
+    const d = this.data;
+    const ups = [];
+    d.xp += Math.max(0, Math.round(n));
+    while (d.lv < MAX_LEVEL && d.xp >= xpFor(d.lv)) {
+      d.xp -= xpFor(d.lv);
+      d.lv++;
+      const pay = levelPay(d.lv);
+      d.cash += pay;
+      d.earned += pay;
+      ups.push({ lv: d.lv, pay, title: newTitleAt(d.lv) });
+    }
+    if (d.lv >= MAX_LEVEL) d.xp = Math.min(d.xp, xpFor(d.lv));
+    this.save();
+    return ups;
+  }
+
+  canPrestige() {
+    return this.data.lv >= MAX_LEVEL && this.data.pr < MAX_PRESTIGE;
+  }
+
+  prestige() {
+    if (!this.canPrestige()) return false;
+    this.data.pr++;
+    this.data.lv = 1;
+    this.data.xp = 0;
+    this.save();
+    return true;
+  }
+
+  // ------------------------------------------------------------ daily
+  // today's challenges with progress; starts a new day's set when it changes
+  today(day) {
+    const y = this.data.daily;
+    if (y.day !== day) {
+      this.data.daily = { day, prog: {}, done: {}, sweep: false };
+      this.save();
+    }
+    return dailyFor(day).map((c) => ({ ...c, prog: Math.min(c.n, this.data.daily.prog[c.id] || 0), done: !!this.data.daily.done[c.id] }));
+  }
+
+  // something happened: returns { done: [challenges finished], sweep }
+  dailyEvent(day, ev, v, mapId) {
+    const list = this.today(day);
+    const y = this.data.daily;
+    const done = [];
+    let moved = false;
+    for (const c of list) {
+      if (c.done) continue;
+      const step = dailyStep(c, ev, v, mapId);
+      if (!step) continue;
+      y.prog[c.id] = c.max ? Math.max(y.prog[c.id] || 0, step) : (y.prog[c.id] || 0) + step;
+      moved = true;
+      if (y.prog[c.id] >= c.n) {
+        y.done[c.id] = true;
+        done.push(c);
+      }
+    }
+    let sweep = false;
+    if (done.length && !y.sweep && list.every((c) => y.done[c.id])) {
+      y.sweep = true;
+      sweep = true;
+    }
+    if (moved) this.save();
+    return { done, sweep, sweepPay: SWEEP_PAY };
+  }
+
+  // the first ride of a day: the streak goes on (or starts again); returns
+  // the new streak length, or 0 if today was already counted
+  streakTick(day) {
+    const s = this.data.streak;
+    if (s.last === day) return 0;
+    s.n = s.last === day - 1 ? s.n + 1 : 1;
+    s.last = day;
+    this.save();
+    return s.n;
+  }
+  streakPay(n) {
+    return streakPay(n);
+  }
+
+  // ------------------------------------------------------------ style
+  // bought, or unlocked by level (any prestige star unlocks them all)
+  hasCos(kind, id) {
+    const it = itemOf(kind, id);
+    if (!it) return false;
+    if (it.lv && (this.data.pr > 0 || this.data.lv >= it.lv)) return true;
+    return this.data.cos.includes(kind + ':' + id);
+  }
+
+  buyCos(kind, id) {
+    const it = itemOf(kind, id);
+    if (!it || this.hasCos(kind, id)) return 'owned';
+    if (!this.spend(it.price)) return 'poor';
+    this.data.cos.push(kind + ':' + id);
+    this.data.eq[kind] = id;
+    this.save();
+    return 'ok';
+  }
+
+  wear(kind, id) {
+    if (id && !this.hasCos(kind, id)) return;
+    if (id) this.data.eq[kind] = id;
+    else delete this.data.eq[kind];
+    this.save();
+  }
+
+  // ------------------------------------------------------------ weekly bests
+  week(w) {
+    if (this.data.wk.w !== w) this.data.wk = { w, tricks: 0, race: {} };
+    return this.data.wk;
   }
 }
 

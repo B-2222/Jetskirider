@@ -18,6 +18,7 @@ import { makeFakeRoom } from './fakeroom.js';
 import { FIREBASE_CONFIG } from './firebase-config.js';
 import { firebase } from './fbapp.js';
 import { JetStream } from './jetstream.js';
+import { itemOf, skiLook, applyFinish, riderLook } from './cosmetics.js';
 import { DEFAULT_WORLD, cleanWorld, sign, verify } from './world.js';
 import { SEA_STATES } from './waves.js';
 
@@ -69,16 +70,32 @@ class Remote {
     mp.game.scene.add(this.jet.mesh, this.wash.mesh);
   }
 
-  setLook(skiId, cw) {
+  // their ski, colourway and style (wrap, outfit, jet colour)
+  setLook(skiId, cw, cs) {
     const spec = skiById(skiId);
     const cwI = clamp(cw | 0, 0, spec.colorways.length - 1);
-    if (spec.id === this.skiId && cwI === this.cw) return;
+    const st = cs && typeof cs === 'object' ? cs : {};
+    const wrap = typeof st.wrap === 'string' && itemOf('wrap', st.wrap) ? st.wrap : '';
+    const fit = typeof st.fit === 'string' && itemOf('fit', st.fit) ? st.fit : '';
+    const jetI = typeof st.jet === 'string' ? itemOf('jet', st.jet) : null;
+    const jetKey = jetI ? jetI.id : '';
+    if (jetKey !== this.jetKey) {
+      this.jetKey = jetKey;
+      this.jet.setTint(jetI ? (jetI.rainbow ? 'rainbow' : jetI.color) : null);
+    }
+    const tag = typeof st.tag === 'string' ? itemOf('tag', st.tag) : null;
+    this.tagColor = tag ? tag.color : '';
+    const key = spec.id + '|' + cwI + '|' + wrap + '|' + fit;
+    if (key === this.lookKey) return;
+    this.lookKey = key;
     this.dispose(true);
     this.skiId = spec.id;
     this.cw = cwI;
     this.spec = spec;
-    this.model = new JetskiModel(spec, spec.colorways[cwI]);
-    this.rider = new Rider(spec.colorways[cwI]);
+    const look = skiLook(spec, cwI, wrap);
+    this.model = new JetskiModel(spec, look.cw);
+    applyFinish(this.model.group, look.finish, look.cw);
+    this.rider = new Rider(riderLook(look.cw, fit));
     this.group.add(this.model.group, this.rider.group);
     this.applyEnv();
   }
@@ -104,7 +121,10 @@ class Remote {
     const ok = (a, n) => a.length === n && a.every((v) => Number.isFinite(v));
     if (!ok(s.p, 3) || !ok(s.q, 4) || (s.u && !ok(s.u, 3))) return;
     if (Math.abs(s.p[0]) > 3000 || Math.abs(s.p[2]) > 3000 || Math.abs(s.p[1]) > 200) return;
-    this.setLook(typeof s.k === 'string' ? s.k : 'trixx', s.c);
+    this.setLook(typeof s.k === 'string' ? s.k : 'trixx', s.c, s.cs);
+    this.lv = Number.isInteger(s.lv) ? clamp(s.lv, 1, 50) : 0;
+    this.pr = Number.isInteger(s.pr) ? clamp(s.pr, 0, 10) : 0;
+    this.cr = Number.isInteger(s.cr) ? clamp(s.cr, 0, 3) : 0;
     this.name = cleanName(s.n) || this.mp.profileName(p.by) || 'Rider';
     this.score = Number.isFinite(s.sc) ? Math.max(0, Math.min(1e8, s.sc | 0)) : 0;
     // Samples go on the local clock that sample() is called with
@@ -792,6 +812,10 @@ export class Multiplayer {
       tu: r2(T.tuck || 0),
       rx: g.spec.rooster || 1,
       m: g.mapId,
+      lv: g.career.data.lv,
+      pr: g.career.data.pr,
+      cs: g.career.data.eq,
+      cr: g.crown || 0,
       a: T.airborne ? 1 : 0,
       w: g.wipe.on ? 1 : 0,
       f: T.reverse > 0.05 ? 1 : 0,
@@ -869,7 +893,30 @@ export class Multiplayer {
       }
       r.tag.hidden = false;
       r.tag.style.transform = `translate(${((v.x * 0.5 + 0.5) * w).toFixed(1)}px, ${((-v.y * 0.5 + 0.5) * h).toFixed(1)}px) translate(-50%, -100%)`;
-      if (r.tagName.textContent !== r.name) r.tagName.textContent = r.name;
+      // name, level, their tag colour and a crown if they are top 3 this week
+      const key = r.name + '|' + r.lv + '|' + r.pr + '|' + r.tagColor + '|' + r.cr;
+      if (r.tagKey !== key) {
+        r.tagKey = key;
+        r.tagName.textContent = r.name;
+        r.tagName.className = r.tagColor === 'rainbow' ? 'rainbow' : '';
+        r.tagName.style.color = r.tagColor && r.tagColor !== 'rainbow' ? r.tagColor : '';
+        if (!r.tagLv) {
+          r.tagLv = document.createElement('em');
+          r.tag.insertBefore(r.tagLv, r.tagName);
+        }
+        r.tagLv.textContent = r.lv ? (r.pr ? '★' + r.pr + ' ' : '') + 'LV ' + r.lv : '';
+        if (r.cr && !r.tagCrown) {
+          r.tagCrown = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          r.tagCrown.setAttribute('viewBox', '0 0 24 18');
+          r.tagCrown.setAttribute('class', 'crown');
+          r.tagCrown.innerHTML = '<path d="M2 16 L4 5 L9 10 L12 2 L15 10 L20 5 L22 16 Z" stroke="#04121a" stroke-width="1.2"/>';
+          r.tag.insertBefore(r.tagCrown, r.tag.firstChild);
+        }
+        if (r.tagCrown) {
+          r.tagCrown.style.display = r.cr ? '' : 'none';
+          r.tagCrown.style.fill = ['', '#ffd54a', '#d9e2e8', '#e0a36a'][r.cr] || '';
+        }
+      }
       const dt = d > 60 ? Math.round(d) + ' m' : '';
       if (r.tagDist.textContent !== dt) r.tagDist.textContent = dt;
       r.tag.style.opacity = String(1 - smoothstep(300, 700, d) * 0.6);
