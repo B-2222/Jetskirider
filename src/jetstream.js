@@ -129,7 +129,7 @@ export class JetStream {
   // uniforms: shared lighting uniforms (from the spray system)
   constructor(uniforms, opts = {}) {
     this.wide = opts.wide || 1; // how fast it spreads (the pump wash is wider)
-    this.sheath = opts.sheath || 2.1; // how much wider the outer spray is than the core
+    this.sheath = opts.sheath || 2.4; // how much wider the outer spray is than the core
     // slowly wandering variation along the stream (per-parcel randomness
     // would make the edges zigzag into spikes)
     this.vary = 0.5;
@@ -233,8 +233,8 @@ export class JetStream {
       this.life[i] = 2.6 + vr * 0.6;
       this.dens[i] = am;
       // a fat column of water out of the nozzle that billows as it goes
-      this.w0[i] = 0.3 + 0.12 * this.wide;
-      this.grow[i] = (3.0 + 1.4 * vr) * spread * this.wide;
+      this.w0[i] = 0.7 + 0.18 * this.wide;
+      this.grow[i] = (5.2 + 2.0 * vr) * spread * this.wide;
       // a jet holds together, then breaks into drops that air slows hard
       this.drag[i] = 0.28 + 0.2 * (1 - vr);
       this.born[i] = this.clock - lag;
@@ -404,7 +404,7 @@ export class JetStream {
       const t01 = ag / life[i];
       // thins out as it spreads and as it nears the end of its flight
       WD[k * 2] = w;
-      WD[k * 2 + 1] = dens[i] * Math.min(1, 0.6 / Math.max(w, 0.6) + 0.5) * (1 - t01 * t01) * Math.min(1, ag * 25);
+      WD[k * 2 + 1] = dens[i] * Math.min(1, 1.0 / Math.max(w, 1.0) + 0.62) * (1 - t01 * t01) * Math.min(1, ag * 25);
     }
     const Q = this.aQ.array;
     Q.fill(0, 0, MAX * 6 * 2);
@@ -413,7 +413,7 @@ export class JetStream {
     // outer mist halo, the spray sheath, then the dense core over them
     for (let layer = 0; layer < 3; layer++) {
       const wk = layer === 0 ? this.sheath * 1.35 : layer === 1 ? this.sheath : 1;
-      const dk = layer === 0 ? 0.07 : layer === 1 ? 0.42 : 1;
+      const dk = layer === 0 ? 0.1 : layer === 1 ? 0.5 : 1;
       let prevV = -1;
       for (let k = 0; k < m; k++) {
         const i = order[k];

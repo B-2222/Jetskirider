@@ -65,7 +65,8 @@ class Remote {
     this.acc = 0;
     // their jet and pump wash, the same real streams of water as your own
     const u = mp.game.spray.uniforms;
-    this.jet = new JetStream(u);
+    // their stream a touch fuller than your own (you see it from further away)
+    this.jet = new JetStream(u, { wide: 1.2 });
     this.wash = new JetStream(u, { wide: 1.7, sheath: 1.45 });
     mp.game.scene.add(this.jet.mesh, this.wash.mesh);
   }
@@ -269,10 +270,48 @@ class Remote {
       const vj = this.spec.jet * (0.5 + 0.5 * power) * (1 + (rx0(s) - 1) * 0.22);
       // a TRIM-X kit on their ski: a taller rooster tail
       const rx = Number.isFinite(s.rx) ? clamp(s.rx, 1, 2.5) : 1;
-      const ly = jd.y * (1 + trimK * 1.25) + (air ? 0 : 0.08 + 0.2 * trimK) * (1 - jo) + (rx - 1) * 0.4 * trimK;
+      // trimmed right up in its own range (as on your own ski)
+      const trimN = clamp((s.tr || 0) / Math.max(this.spec.trimUp, s.tr || 0, 1e-3), 0, 1);
+      const trimLift = Math.max(0, trimN - trimK) * 0.5;
+      const ly = jd.y * (1 + trimK * 1.25) + (air ? 0 : 0.08 + 0.2 * trimK) * (1 - jo) + (rx - 1) * 0.4 * trimK + trimLift * (1 - jo * 0.5);
       const ll = Math.hypot(jd.x, ly, jd.z) || 1;
       const wy = surf(exit.x, exit.z);
-      this.jet.feed(dt, exit.x, Math.max(exit.y, wy + 0.02), exit.z, this.vel.x, this.vel.y, this.vel.z, jd.x / ll, ly / ll, jd.z / ll, vj * (0.5 + 0.5 * jo / Math.max(power, 0.05)), jo, 0.9);
+      this.jet.feed(dt, exit.x, Math.max(exit.y, wy + 0.02), exit.z, this.vel.x, this.vel.y, this.vel.z, jd.x / ll, ly / ll, jd.z / ll, vj * (0.5 + 0.5 * jo / Math.max(power, 0.05)), Math.min(1, jo * 1.3), (0.8 + 0.5 * (1 - clamp(jo / Math.max(power, 0.05), 0, 1)) - trimK * 0.15 + speed / 80) * 1.15);
+      // the droplets and mist round their stream (as on your own ski, within
+      // the shared spray budget): this is what makes a rooster tail a wall
+      if (dist < 220 && jo > 0.03) {
+        const e = clamp(jo / Math.max(power, 0.05), 0, 1);
+        const rnd = Math.random;
+        const rs = () => Math.random() * 2 - 1;
+        const vjet = vj * (0.5 + 0.5 * e);
+        const spr = 0.045 + 0.1 * (1 - e) + 0.03 * power + trimK * 0.06 * (1 - e * 0.5);
+        const boost = 1 + trimK * 1.15 + trimLift;
+        const rate = 5600 * Math.pow(Math.min(1, jo * 1.3), 0.75) * (1 + trimK * 0.9) * (1 + e * 0.6) * budget * 0.75;
+        const ex = exit.x, ey = Math.max(exit.y, wy + 0.02), ez = exit.z;
+        const vx0 = this.vel.x, vy0 = this.vel.y, vz0 = this.vel.z;
+        this.dropAcc = (this.dropAcc || 0) + rate * dt;
+        let n = Math.min(260, this.dropAcc | 0);
+        this.dropAcc -= this.dropAcc | 0;
+        for (let i = 0; i < n; i++) {
+          const sp = spr * (0.3 + rnd() * rnd() * 2.2);
+          const dx = jd.x + rs() * sp, dy = jd.y * boost + rs() * sp * 0.8 + sp * 0.25, dz = jd.z + rs() * sp;
+          const sv = vjet * (0.62 + rnd() * 0.52);
+          const core = rnd() < 0.68;
+          const grow = 1 + trimK * 0.4;
+          g.spray.emit(ex + rs() * 0.06, ey + rs() * 0.04, ez + rs() * 0.06, vx0 + dx * sv, vy0 + dy * sv, vz0 + dz * sv,
+            (1.5 + rnd() * 1.6) * (1 + trimK * 0.4), core ? 0.09 + rnd() * 0.06 : 0.13 + rnd() * 0.1, (core ? 0.36 + rnd() * 0.38 : 0.55 + rnd() * 0.65) * grow,
+            1, core ? 0.09 : 0.36, core ? 1.0 : 0.72, 0.12);
+        }
+        this.mistAcc = (this.mistAcc || 0) + rate * (0.08 + e * 0.09) * dt;
+        n = Math.min(40, this.mistAcc | 0);
+        this.mistAcc -= this.mistAcc | 0;
+        for (let i = 0; i < n; i++) {
+          const sv = vjet * (0.35 + rnd() * 0.4);
+          g.spray.emit(ex + rs() * 0.1, ey + rnd() * 0.1, ez + rs() * 0.1,
+            vx0 * 0.4 + (jd.x + rs() * 0.25) * sv, vy0 * 0.3 + (jd.y * boost + rnd() * 0.25) * sv, vz0 * 0.4 + (jd.z + rs() * 0.25) * sv,
+            (1.5 + rnd() * 1.3) * (1 + trimK * 0.4), 0.2, (0.8 + rnd() * 0.75) * (1 + trimK * 0.4), 0.3, 1.4, 0.14, 0.03);
+        }
+      }
       const hl = Math.hypot(jd.x, jd.z) || 1;
       const up = (1.0 + 4.2 * power) * (0.4 + 0.6 * Math.min(1, speed / 12));
       const wv = vj * 0.42;
