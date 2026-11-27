@@ -10,7 +10,7 @@ export const WRAPS = [
   { id: 'chrome', name: 'Chrome', price: 30000, lv: 40, cw: { hull: 0xd9dde2, deck: 0xc8ced4, accent: 0x1a1c20, seat: 0x15171a, trim: 0x8fd8ff }, finish: 'chrome' },
   { id: 'gold', name: 'Solid Gold', price: 75000, cw: { hull: 0xd4a63a, deck: 0xe8c25a, accent: 0x1a1508, seat: 0x15120a, trim: 0xffe08a }, finish: 'gold' },
   // the admin's own: black chrome and glowing gold, only with the admin code
-  { id: 'barsa', name: 'Barsa Edition', price: 0, admin: true, cw: { hull: 0x0c0d0f, deck: 0x14161a, accent: 0xffc531, seat: 0x0c0d0f, trim: 0xffc531 }, finish: 'owner' },
+  { id: 'barsa', name: 'Barsa Edition', price: 0, admin: true, cw: { hull: 0x0c0d0f, deck: 0x14161a, accent: 0xffc531, seat: 0x0c0d0f, trim: 0xffc531, art: 'barsa' }, finish: 'owner', flair: 'barsa' },
 ];
 
 // Jet stream colours (a tint over the white water).
@@ -55,7 +55,7 @@ export const itemOf = (kind, id) => {
 // The look for a ski: its own colourway, or a wrap over it.
 export function skiLook(spec, cwI, wrapId) {
   const w = wrapId && itemOf('wrap', wrapId);
-  return w ? { cw: w.cw, finish: w.finish || null } : { cw: spec.colorways[cwI] || spec.colorways[0], finish: null };
+  return w ? { cw: w.cw, finish: w.finish || null, flair: w.flair || null } : { cw: spec.colorways[cwI] || spec.colorways[0], finish: null, flair: null };
 }
 
 // Paint finish on a built ski: chrome and gold go metallic, neon glows.

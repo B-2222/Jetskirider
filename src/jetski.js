@@ -244,7 +244,71 @@ function seatRing(P, s) {
 // ---------------------------------------------------------------------------
 const hex = (c) => '#' + new THREE.Color(c).getHexString();
 
+// Custom art for the admin's Barsa Edition wrap: gold flames licking back
+// from the bow over black chrome, a gold pinstripe and gold lettering with a
+// dark outline.
+function barsaFlames(g, w, h, mirror, big) {
+  g.save();
+  if (mirror) {
+    g.translate(w, 0);
+    g.scale(-1, 1);
+  }
+  const grad = g.createLinearGradient(w, 0, w * 0.12, 0);
+  grad.addColorStop(0, '#fff3b0');
+  grad.addColorStop(0.35, '#ffc531');
+  grad.addColorStop(0.75, '#e07a10');
+  grad.addColorStop(1, 'rgba(180, 60, 10, 0)');
+  g.fillStyle = grad;
+  const tongues = big ? 7 : 5;
+  for (let i = 0; i < tongues; i++) {
+    const y0 = h * (0.12 + (0.76 * i) / (tongues - 1));
+    const len = w * (0.55 + 0.3 * Math.sin(i * 1.7 + 0.6) ** 2);
+    const th = h * (big ? 0.24 : 0.3);
+    g.beginPath();
+    g.moveTo(w, y0 - th);
+    g.bezierCurveTo(w - len * 0.45, y0 - th * 1.1, w - len * 0.7, y0 + th * 0.2, w - len, y0 - th * 0.35);
+    g.bezierCurveTo(w - len * 0.72, y0 + th * 0.55, w - len * 0.4, y0 + th * 0.9, w, y0 + th);
+    g.closePath();
+    g.fill();
+  }
+  // pinstripe
+  g.fillStyle = '#ffc531';
+  g.fillRect(0, h * (big ? 0.9 : 0.86), w, h * 0.035);
+  g.restore();
+}
+
+function barsaWord(g, w, h, mirror, size, x0, word) {
+  g.save();
+  if (mirror) {
+    g.translate(w, 0);
+    g.scale(-1, 1);
+  }
+  g.font = 'italic 900 ' + size + 'px "Arial Black", "Helvetica Neue", Arial, sans-serif';
+  g.textBaseline = 'middle';
+  g.transform(1, 0, -0.18, 1, 0, 0);
+  const tw = g.measureText(word).width;
+  const tx = mirror ? w * (1 - x0) - tw : w * x0;
+  g.lineWidth = size * 0.09;
+  g.strokeStyle = '#1a1205';
+  g.strokeText(word, tx, h * 0.52);
+  const grad = g.createLinearGradient(0, h * 0.2, 0, h * 0.85);
+  grad.addColorStop(0, '#fff6c8');
+  grad.addColorStop(0.5, '#ffc531');
+  grad.addColorStop(1, '#b8780e');
+  g.fillStyle = grad;
+  g.fillText(word, tx, h * 0.52);
+  g.restore();
+}
+
 function hullSideTexture(spec, cw, mirror) {
+  if (cw.art === 'barsa') {
+    return canvasTexture(2048, 256, (g, w, h) => {
+      g.fillStyle = hex(cw.hull);
+      g.fillRect(0, 0, w, h);
+      barsaFlames(g, w, h, mirror, true);
+      barsaWord(g, w, h, mirror, 150, 0.16, 'SEA-DOO');
+    });
+  }
   return canvasTexture(2048, 256, (g, w, h) => {
     const dark = new THREE.Color(cw.hull).getHSL({}).l < 0.4;
     g.fillStyle = hex(cw.hull);
@@ -275,6 +339,14 @@ function hullSideTexture(spec, cw, mirror) {
 }
 
 function upperSideTexture(spec, cw, mirror) {
+  if (cw.art === 'barsa') {
+    return canvasTexture(2048, 128, (g, w, h) => {
+      g.fillStyle = hex(cw.deck);
+      g.fillRect(0, 0, w, h);
+      barsaFlames(g, w, h, mirror, true);
+      barsaWord(g, w, h, mirror, 70, 0.2, spec.name);
+    });
+  }
   return canvasTexture(2048, 128, (g, w, h) => {
     g.fillStyle = hex(cw.deck);
     g.fillRect(0, 0, w, h);
@@ -377,6 +449,14 @@ function standupRing(P, s) {
 }
 
 function standupSideTexture(spec, cw, mirror) {
+  if (cw.art === 'barsa') {
+    return canvasTexture(2048, 256, (g, w, h) => {
+      g.fillStyle = hex(cw.hull);
+      g.fillRect(0, 0, w, h);
+      barsaFlames(g, w, h, mirror, true);
+      barsaWord(g, w, h, mirror, 130, 0.14, spec.name.split(' ')[0]);
+    });
+  }
   return canvasTexture(2048, 256, (g, w, h) => {
     const dark = new THREE.Color(cw.hull).getHSL({}).l < 0.4;
     g.fillStyle = hex(cw.hull);

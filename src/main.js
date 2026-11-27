@@ -21,6 +21,7 @@ import { MAPS, mapById, applyMap } from './maps.js';
 import { Career, START_SKI, CASH_PER_POINT, RACE_PAY, SPRAY_PAY, money } from './career.js';
 import { Accounts, authError } from './accounts.js';
 import { SHOP, itemOf, skiLook, applyFinish, riderLook } from './cosmetics.js';
+import { addFlair } from './flair.js';
 import { MAX_LEVEL, xpFor, trickXp, titleFor, PRESTIGE_BONUS } from './levels.js';
 import { dayNow, msToNextDay, SWEEP_PAY } from './daily.js';
 import { Boards, thisWeek } from './boards.js';
@@ -376,11 +377,14 @@ class Game {
     }
     this.model = new JetskiModel(spec, cw);
     applyFinish(this.model.group, look.finish, cw);
+    if (this.flair) this.flair.dispose();
+    this.flair = addFlair(this.model, look, spec, this.scene);
     this.skiGroup.add(this.model.group);
     this.rider = new Rider(riderLook(cw, eq.fit));
     this.skiGroup.add(this.rider.group);
     const jet = eq.jet && itemOf('jet', eq.jet);
-    this.effects.jet.setTint(jet ? jet.color : null);
+    // the Barsa Edition throws gold water unless you picked a jet colour
+    this.effects.jet.setTint(jet ? jet.color : look.flair === 'barsa' ? 0xffc531 : null);
     this.phys.setSpec(spec);
     this.audio.setSpec(spec);
     this.ocean.uniforms.uSkiDim.value.set(spec.L * 0.56, spec.B * 0.62);
@@ -2675,6 +2679,7 @@ class Game {
     this.race.update(dt, time, p, this.state === 'ride' && !this.wipe.on, this.mp.worldClock());
     this.updateRaceQueue();
     if (this.rain) this.rain.update(dt, this.camera.position);
+    if (this.flair) this.flair.update(now / 1000, p.px, surfAt(p.px, p.pz), p.pz, p.py, p.yaw);
     if (this.boltT !== undefined) {
       // lightning: a double flash every so often
       this.boltT -= dt;

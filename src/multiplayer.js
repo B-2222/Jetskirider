@@ -19,6 +19,7 @@ import { FIREBASE_CONFIG } from './firebase-config.js';
 import { firebase } from './fbapp.js';
 import { JetStream } from './jetstream.js';
 import { itemOf, skiLook, applyFinish, riderLook } from './cosmetics.js';
+import { addFlair } from './flair.js';
 import { DEFAULT_WORLD, cleanWorld, sign, verify } from './world.js';
 import { SEA_STATES } from './waves.js';
 
@@ -79,10 +80,11 @@ class Remote {
     const wrap = typeof st.wrap === 'string' && itemOf('wrap', st.wrap) ? st.wrap : '';
     const fit = typeof st.fit === 'string' && itemOf('fit', st.fit) ? st.fit : '';
     const jetI = typeof st.jet === 'string' ? itemOf('jet', st.jet) : null;
-    const jetKey = jetI ? jetI.id : '';
+    const gold = !!wrap && itemOf('wrap', wrap).flair === 'barsa';
+    const jetKey = (jetI ? jetI.id : '') + (gold ? '|gold' : '');
     if (jetKey !== this.jetKey) {
       this.jetKey = jetKey;
-      this.jet.setTint(jetI ? jetI.color : null);
+      this.jet.setTint(jetI ? jetI.color : gold ? 0xffc531 : null);
     }
     const tag = typeof st.tag === 'string' ? itemOf('tag', st.tag) : null;
     this.tagColor = tag ? tag.color : '';
@@ -96,6 +98,8 @@ class Remote {
     const look = skiLook(spec, cwI, wrap);
     this.model = new JetskiModel(spec, look.cw);
     applyFinish(this.model.group, look.finish, look.cw);
+    if (this.flair) this.flair.dispose();
+    this.flair = addFlair(this.model, look, spec, this.mp.game.scene);
     this.rider = new Rider(riderLook(look.cw, fit));
     this.group.add(this.model.group, this.rider.group);
     this.applyEnv();
@@ -194,6 +198,7 @@ class Remote {
     if (!this.model || !this.sample(now) || (this.state.m || 'bay') !== this.mp.game.mapId) {
       this.group.visible = false;
       this.tag.hidden = true;
+      if (this.flair) this.flair.hide();
       if (this.jet) {
         this.jet.clear();
         this.wash.clear();
@@ -206,6 +211,14 @@ class Remote {
     this.group.visible = !far;
     this.group.position.copy(this.pos);
     this.group.quaternion.copy(this.quat);
+    if (this.flair) {
+      const surfAt = this.mp.game._surfAt;
+      if (far || !surfAt) this.flair.hide();
+      else {
+        const hx = new THREE.Vector3(1, 0, 0).applyQuaternion(this.quat);
+        this.flair.update(now, this.pos.x, surfAt(this.pos.x, this.pos.z), this.pos.z, this.pos.y, Math.atan2(-hx.z, hx.x));
+      }
+    }
     this.frame++;
     if (far) return;
     const wiped = !!s.w;
@@ -341,6 +354,10 @@ class Remote {
       this.jet.dispose();
       this.wash.dispose();
       this.jet = this.wash = null;
+    }
+    if (this.flair) {
+      this.flair.dispose();
+      this.flair = null;
     }
     if (this.model) {
       this.group.remove(this.model.group);
