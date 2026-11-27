@@ -93,11 +93,18 @@ function material(uniforms) {
         float n3 = texture2D(uNoise, nc * vec2(3.1, 0.75) + 0.71).a;
         float n = n1 * 0.5 + n2 * 0.32 + n3 * 0.18;
         // ragged edges: the outline wanders with the noise
-        float xr = (vQ.x > 0.5 ? length(vec2(x, vQ.y)) : abs(x)) * (1.0 + (n1 - 0.5) * 0.9 * brk);
-        float prof = 1.0 - smoothstep(mix(0.55, 0.15, brk), 1.0, xr);
-        float lace = smoothstep(0.28 + brk * 0.12, 0.7, n + (1.0 - xr) * 0.35);
-        float a = prof * mix(1.0, lace, brk) * vDat.y;
-        a *= mix(1.0, 0.55 + 0.45 * n3, brk); // thinning to mist
+        // the core is the jet itself: a solid, bright rope of water that holds
+        // together for longer, with streaks running along it; the spray
+        // round it breaks up into lace and mist
+        float core = step(9.5, vDat.w);
+        float bk = brk * (1.0 - 0.75 * core);
+        float xr = (vQ.x > 0.5 ? length(vec2(x, vQ.y)) : abs(x)) * (1.0 + (n1 - 0.5) * 0.9 * bk);
+        float prof = 1.0 - smoothstep(mix(mix(0.55, 0.15, brk), mix(0.72, 0.4, bk), core), 1.0, xr);
+        float lace = smoothstep(0.28 + bk * 0.12, 0.7, n + (1.0 - xr) * 0.35);
+        float streak = texture2D(uNoise, vec2(x * 1.7 + vDat.w * 3.0, vUv.y * 2.2)).r;
+        float a = prof * mix(1.0, lace, bk) * vDat.y;
+        a *= mix(1.0, 0.55 + 0.45 * n3, bk); // thinning to mist
+        a *= 1.0 + core * (0.45 + 0.4 * (streak - 0.5));
         // water right by the lens is a blur you never see as a sheet
         a *= smoothstep(1.0, 4.0, length(cameraPosition - vWorld));
         if (a < 0.01) discard;
@@ -109,6 +116,8 @@ function material(uniforms) {
         vec3 col = mix(uShade, uLit, lit);
         // the young rope is glassy and catches the water's colour in its middle
         col = mix(col, uWater * (0.8 + 0.5 * lit), (1.0 - brk) * 0.35 * (1.0 - abs(x)));
+        // the core rope is brighter white water
+        col = mix(col, uLit * (0.85 + 0.35 * lit), 0.3 * core);
         // sparkle where it catches the sun
         col += uSunColor * smoothstep(0.82, 0.97, n3) * lit * 0.6;
         // backlit by the sun it glows
@@ -129,7 +138,7 @@ export class JetStream {
   // uniforms: shared lighting uniforms (from the spray system)
   constructor(uniforms, opts = {}) {
     this.wide = opts.wide || 1; // how fast it spreads (the pump wash is wider)
-    this.sheath = opts.sheath || 2.4; // how much wider the outer spray is than the core
+    this.sheath = opts.sheath || 1.8; // how much wider the outer spray is than the core
     // slowly wandering variation along the stream (per-parcel randomness
     // would make the edges zigzag into spikes)
     this.vary = 0.5;
@@ -273,10 +282,12 @@ export class JetStream {
           this.landed += dens[i];
           const w = this.w0[i] + this.grow[i] * Math.pow(a, 0.8);
           if (foam) foam.stamp(px[i], pz[i], 0.35 + w * 0.45, dens[i] * 0.5, dens[i] * 0.35);
-          if (spray && Math.random() < 0.7 * density * dens[i]) {
+          // the odd splash where it comes down (kept sparse: a blob for every
+          // landing buried the stream itself in white)
+          if (spray && Math.random() < 0.16 * density * dens[i]) {
             const r = () => Math.random() * 2 - 1;
-            spray.emit(px[i] + r() * w * 0.3, h + 0.05, pz[i] + r() * w * 0.3, vx[i] * 0.3 + r() * 1.2, 1 + Math.random() * 2.5, vz[i] * 0.3 + r() * 1.2,
-              0.6 + Math.random() * 0.7, 0.08 + Math.random() * 0.06, 0.4 + Math.random() * 0.5, 1, 0.5, 0.75, 0.12);
+            spray.emit(px[i] + r() * w * 0.3, h + 0.05, pz[i] + r() * w * 0.3, vx[i] * 0.3 + r() * 1.2, 1 + Math.random() * 2, vz[i] * 0.3 + r() * 1.2,
+              0.5 + Math.random() * 0.5, 0.06 + Math.random() * 0.04, 0.25 + Math.random() * 0.3, 1, 0.5, 0.75, 0.12);
           }
         }
       }
@@ -412,8 +423,9 @@ export class JetStream {
     let idx = 0;
     // outer mist halo, the spray sheath, then the dense core over them
     for (let layer = 0; layer < 3; layer++) {
-      const wk = layer === 0 ? this.sheath * 1.35 : layer === 1 ? this.sheath : 1;
-      const dk = layer === 0 ? 0.1 : layer === 1 ? 0.5 : 1;
+      // the core rope is narrower than the spray round it, so it shows
+      const wk = layer === 0 ? this.sheath * 1.35 : layer === 1 ? this.sheath : 0.55;
+      const dk = layer === 0 ? 0.025 : layer === 1 ? 0.22 : 1;
       let prevV = -1;
       for (let k = 0; k < m; k++) {
         const i = order[k];
@@ -440,7 +452,7 @@ export class JetStream {
           D[v4] = Math.min(1, age[i] / 1.6);
           D[v4 + 1] = dd;
           D[v4 + 2] = w;
-          D[v4 + 3] = this.seedV + layer * 0.37;
+          D[v4 + 3] = this.seedV + layer * 0.37 + (layer === 2 ? 10 : 0);
           vtx++;
         }
         if (prevV >= 0 && JN[k]) {
@@ -460,7 +472,7 @@ export class JetStream {
       const i = order[k];
       if (i < 0 || i & 1) continue;
       const eo = EO[k];
-      const pk = Math.max(0.04 + 0.26 * eo * eo * (3 - 2 * eo), 0.3 * (1 - RB[k] * EG[k]));
+      const pk = Math.max(0.03 + 0.2 * eo * eo * (3 - 2 * eo), 0.11 * (1 - RB[k] * EG[k]));
       const w = WD[k * 2] * (1.5 + 0.4 * (1 - RB[k]));
       const dd = WD[k * 2 + 1] * pk * nearFade(DI[k], w);
       if (dd < 0.01) continue;

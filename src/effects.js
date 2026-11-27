@@ -93,7 +93,7 @@ export class SkiEffects {
         this.jetOut = flow * out;
       }
       // the droplets are now only the fringe of the stream
-      n = Math.round(n * 0.5 * this.mega);
+      n = Math.round(n * 0.16 * this.mega);
       for (let i = 0; i < n; i++) {
         const sp = spread * (0.3 + rnd() * rnd() * 2.2);
         const dx = jd.x + rs() * sp, dy = jd.y * boost + rs() * sp * 0.8 + sp * 0.25, dz = jd.z + rs() * sp;
@@ -113,7 +113,7 @@ export class SkiEffects {
         );
       }
       // hanging mist around the tail
-      this.acc.mist += rate * (0.08 + e * 0.09) * dt;
+      this.acc.mist += rate * (0.035 + e * 0.04) * dt;
       let m = this.acc.mist | 0;
       this.acc.mist -= m;
       for (let i = 0; i < m; i++) {

@@ -286,7 +286,7 @@ class Remote {
         const vjet = vj * (0.5 + 0.5 * e);
         const spr = 0.045 + 0.1 * (1 - e) + 0.03 * power + trimK * 0.06 * (1 - e * 0.5);
         const boost = 1 + trimK * 1.15 + trimLift;
-        const rate = 5600 * Math.pow(Math.min(1, jo * 1.3), 0.75) * (1 + trimK * 0.9) * (1 + e * 0.6) * budget * 0.75;
+        const rate = 5600 * Math.pow(Math.min(1, jo * 1.3), 0.75) * (1 + trimK * 0.9) * (1 + e * 0.6) * budget * 0.24;
         const ex = exit.x, ey = Math.max(exit.y, wy + 0.02), ez = exit.z;
         const vx0 = this.vel.x, vy0 = this.vel.y, vz0 = this.vel.z;
         this.dropAcc = (this.dropAcc || 0) + rate * dt;
@@ -302,7 +302,7 @@ class Remote {
             (1.5 + rnd() * 1.6) * (1 + trimK * 0.4), core ? 0.09 + rnd() * 0.06 : 0.13 + rnd() * 0.1, (core ? 0.36 + rnd() * 0.38 : 0.55 + rnd() * 0.65) * grow,
             1, core ? 0.09 : 0.36, core ? 1.0 : 0.72, 0.12);
         }
-        this.mistAcc = (this.mistAcc || 0) + rate * (0.08 + e * 0.09) * dt;
+        this.mistAcc = (this.mistAcc || 0) + rate * (0.035 + e * 0.04) * dt;
         n = Math.min(40, this.mistAcc | 0);
         this.mistAcc -= this.mistAcc | 0;
         for (let i = 0; i < n; i++) {
