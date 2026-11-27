@@ -290,6 +290,10 @@ class Game {
     this.applySea(true);
     this.applyTime(true);
     this.mp.onWorld = (w) => this.applyWorld(w);
+    this.mp.onGift = (amount) => {
+      this.career.earn(amount);
+      this.toast('GIFT FROM THE ADMIN', 'You got ' + money(amount) + '!', amount);
+    };
     // one wave clock for everyone, so friends in a lobby see the same surf
     // (start a second early: the settle below runs the clock forward)
     this.phys.time = this.mp.worldTime() - 1;
@@ -904,6 +908,21 @@ class Game {
       if (this.state === 'ride') this.teleport('zone');
       say('everyone is off to the wave zone.');
     });
+    // gifts: cash for one rider online
+    $('admGiftAmt').addEventListener('keydown', (e) => e.stopPropagation());
+    $('admGift').addEventListener('click', async () => {
+      const sel = $('admGiftTo');
+      const peer = sel.value;
+      const amt = parseInt($('admGiftAmt').value, 10);
+      if (!peer) return say('pick someone to give to.');
+      if (!(amt >= 1)) return say('type an amount.');
+      const name = sel.options[sel.selectedIndex].textContent;
+      $('admGift').disabled = true;
+      const ok = await mp.sendGift(peer, amt);
+      $('admStatus').textContent = ok ? 'Gave ' + money(Math.min(amt, 1000000)) + ' to ' + name + '.' : 'Not online, so no gift sent.';
+      // one at a time, so each gift reaches its rider
+      setTimeout(() => ($('admGift').disabled = false), 3000);
+    });
     $('admCash').addEventListener('click', () => {
       this.career.earn(10000);
       $('admStatus').textContent = 'Added $10,000 to your wallet (just you).';
@@ -1111,6 +1130,17 @@ class Game {
     const t = online ? online.toLocaleString() + ' online now' : '';
     if ($('mpStats').textContent !== t) $('mpStats').textContent = t;
     if (mp.adminKey) {
+      const sel = $('admGiftTo');
+      const list = mp.online();
+      const key = list.map((o) => o.peer + o.name + o.lobby).join('|');
+      if (sel._key !== key && document.activeElement !== sel) {
+        sel._key = key;
+        const keep = sel.value;
+        sel.textContent = '';
+        if (!list.length) sel.append(new Option('Nobody online', ''));
+        for (const o of list) sel.append(new Option(o.name + (o.lobby ? ' · ' + o.lobby.replace('lobby-', 'Lobby ') : ''), o.peer));
+        if (list.some((o) => o.peer === keep)) sel.value = keep;
+      }
       const n = this.accounts.riders;
       const a = (n === undefined ? 'Counting…' : n < 0 ? 'Not available here' : n.toLocaleString() + (n === 1 ? ' rider has' : ' riders have') + ' played') + ' · ' + online + ' online now';
       if ($('admRiders').textContent !== a) $('admRiders').textContent = a;

@@ -400,6 +400,7 @@ export class Multiplayer {
       (ch) => {
         this.readWorld();
         this.readChat(ch);
+        this.readGifts();
         this.changed();
       },
       () => {
@@ -669,6 +670,56 @@ export class Multiplayer {
     // pass it on, so it holds after the admin has gone
     if (this.room) this.room.presence({ ws: pack }).catch(() => {});
     if (this.onWorld) this.onWorld(this.world);
+  }
+
+  // ---------------------------------------------------------------- gifts
+  // The admin can give cash to one rider online. The gift rides in the
+  // admin's presence, signed with the admin key like the world settings, and
+  // names the rider by their label for this visit; only that rider's game
+  // takes it, once. Nobody else can fake one.
+  generalId() {
+    const me = this.room ? this.room.peers().find((p) => p.sameTab || p.isMe) : null;
+    return me ? me.peer : null;
+  }
+
+  // everyone online right now (all lobbies and maps), for the admin's list
+  online() {
+    if (!this.room) return [];
+    return this.room
+      .peers()
+      .filter((p) => !p.sameTab && !p.isMe && p.kind === 'viewer')
+      .map((p) => ({ peer: p.peer, name: cleanName(p.presence && p.presence.n) || 'Rider', lobby: (p.presence && p.presence.lobby) || null }));
+  }
+
+  async sendGift(peer, amount) {
+    if (!this.adminKey || !this.room) return false;
+    const a = Math.max(1, Math.min(1000000, Math.round(amount)));
+    const j = JSON.stringify({ to: peer, a, i: Math.random().toString(36).slice(2, 9), t: Date.now() });
+    const g = await sign(this.adminKey, j);
+    await this.room.presence({ gf: { j, g } }).catch(() => {});
+    return true;
+  }
+
+  readGifts() {
+    if (!this.room || !this.onGift) return;
+    const me = this.generalId();
+    if (!me) return;
+    const seen = this.giftsSeen || (this.giftsSeen = new Set());
+    for (const p of this.room.peers()) {
+      const gf = p.presence && p.presence.gf;
+      if (!gf || typeof gf.j !== 'string' || typeof gf.g !== 'string' || gf.j.length > 300 || seen.has(gf.g)) continue;
+      let o;
+      try {
+        o = JSON.parse(gf.j);
+      } catch {
+        continue;
+      }
+      seen.add(gf.g);
+      if (!o || o.to !== me || !Number.isFinite(o.a) || o.a < 1 || o.a > 1000000 || Math.abs(Date.now() - o.t) > 600000) continue;
+      verify(gf.j, gf.g).then((ok) => {
+        if (ok && this.onGift) this.onGift(Math.round(o.a));
+      });
+    }
   }
 
   // Admin only: change the world for everyone (and for you, offline).

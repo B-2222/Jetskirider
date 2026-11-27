@@ -299,6 +299,11 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 .mp { display: grid; gap: 8px; }
 .mp input { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; color: var(--foam); font: inherit; padding: 6px 10px; width: min(220px, 60vw); }
 .mp input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gift select, .gift input { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; color: var(--foam); font: inherit; padding: 6px 8px; }
+.gift select { min-width: 0; max-width: 200px; }
+.gift input { width: 100px; }
+.gift button { background: transparent; border: 1px solid var(--cash); color: var(--cash); border-radius: 4px; padding: 6px 12px 5px; font-family: var(--display); font-weight: 800; letter-spacing: 0.08em; }
+.gift button:disabled { opacity: 0.45; }
 .mp-status.mp-stats { color: var(--accent); font-family: var(--display); font-weight: 700; letter-spacing: 0.06em; font-size: 14px; }
 .mp-status { margin: 0; color: var(--mist); font-size: 13px; line-height: 1.4; max-width: 52ch; }
 .seg button:disabled { opacity: 0.45; cursor: default; }
