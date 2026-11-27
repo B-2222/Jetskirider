@@ -161,16 +161,10 @@
           <div class="row"><span class="lbl">MISSIONS</span><span class="world-val" id="missionCount">0 / 0 done</span></div>
           <ol class="mission-list" id="missionList"></ol>
         </section>
-        <section class="boards" aria-label="Weekly leaderboard">
-          <div class="row"><span class="lbl">WEEKLY</span><div class="seg" id="boardTabs"><button data-b="tricks">Best trick</button><button data-b="race">Race lap</button></div></div>
-          <ol class="board-list" id="boardList"></ol>
-          <p class="mp-status" id="boardNote"></p>
-        </section>
         </div>
         <div class="tab" data-tab="online" role="tabpanel" hidden>
         <section class="mp" aria-label="Ride online">
           <div class="row"><span class="lbl">ONLINE</span><div class="seg" id="mpLobbies"><button id="mpL1" disabled>Lobby 1</button><button id="mpL2" disabled>Lobby 2</button></div></div>
-          <div class="row"><label class="lbl" for="mpName">NAME</label><input id="mpName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Your name"></div>
           <p class="mp-status" id="mpStatus">Connecting…</p>
           <p class="mp-status mp-stats" id="mpStats"></p>
         </section>
@@ -179,6 +173,7 @@
           <div id="adminPanel" hidden>
             <p class="admin-note">You are the admin. Everything here changes the world for everyone online.</p>
             <div class="row"><span class="lbl">RIDERS</span><span class="world-val" id="admRiders">Counting…</span></div>
+          <div class="row"><span class="lbl">SKIS</span><div class="seg wrap" id="admSkis"></div><span class="world-val dim">Your own: only the admin can ride them</span></div>
           <div class="row"><span class="lbl">WRAP</span><div class="seg"><button id="admWrap">BARSA EDITION: OFF</button></div><span class="world-val dim">Your own wrap: only the admin can wear it</span></div>
             <div class="row gift"><span class="lbl">GIFT</span><select id="admGiftTo"><option value="">Nobody online</option></select><input id="admGiftAmt" type="number" min="-1000000" max="1000000" step="100" value="1000" aria-label="Amount (minus takes cash away)" title="Minus takes cash away"><button id="admGift">GIVE</button></div>
             <div class="row"><span class="lbl">TIME</span><input type="range" id="admTime" min="0" max="24" step="0.25"><span class="world-val" id="admTimeLbl">12:00</span></div>
@@ -194,7 +189,19 @@
     </div>
 
     <!-- always in reach: ride, controls -->
-    <div class="menu-side">
+    <div class="menu-side" id="menuSide">
+      <!-- pinned above RIDE: your name tag as others see it, and this week's board -->
+      <aside class="pin-card" aria-label="Your tag and the weekly leaderboard">
+        <div class="pin-tag">
+          <label class="lbl" for="mpName">NAME TAG</label>
+          <div class="tag-edit"><span class="tag-lv" id="tagLv">LV 1</span><input id="mpName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Your name"><svg class="tag-crown" id="tagCrown" viewBox="0 0 24 18" aria-hidden="true" hidden><path d="M2 16 L4 5 L9 10 L12 2 L15 10 L20 5 L22 16 Z" stroke="#04121a" stroke-width="1.2"/></svg></div>
+        </div>
+        <section class="boards" aria-label="Weekly leaderboard">
+          <div class="row"><span class="lbl">WEEKLY</span><div class="seg" id="boardTabs"><button data-b="tricks">Best trick</button><button data-b="race">Race lap</button></div></div>
+          <ol class="board-list" id="boardList"></ol>
+          <p class="mp-status" id="boardNote"></p>
+        </section>
+      </aside>
       <button class="go" id="btnRide">RIDE</button>
       <button class="ghost" id="btnHelp">CONTROLS</button>
       <p class="credit">Made by <b>Barsa</b></p>

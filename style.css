@@ -170,7 +170,7 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 /* ---------- garage ---------- */
 #menu { position: absolute; inset: 0; display: flex; background: linear-gradient(90deg, rgba(4, 18, 26, 0.88) 0, rgba(4, 18, 26, 0.62) 36%, rgba(4, 18, 26, 0) 62%); overflow: hidden; }
 /* the garage: a compact header, tabs, and only the open tab scrolls */
-.menu-panel { width: min(100%, 540px); height: 100%; display: flex; flex-direction: column; gap: 12px; padding-block: max(18px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px)); padding-left: max(22px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
+.menu-panel { width: min(540px, calc(100% - 350px)); height: 100%; display: flex; flex-direction: column; gap: 12px; padding-block: max(18px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-bottom, 0px)); padding-left: max(22px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
 .menu-head h1 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(40px, 6vw, 60px); line-height: 0.84; margin: 0; letter-spacing: 0.005em; text-wrap: balance; }
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); flex: none; overflow-x: auto; scrollbar-width: none; }
 .tabs button { background: transparent; border: 0; border-bottom: 3px solid transparent; padding: 8px 12px 6px; font-family: var(--display); font-weight: 800; letter-spacing: 0.1em; font-size: 15px; color: var(--mist); white-space: nowrap; }
@@ -183,6 +183,24 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 .menu-side { position: absolute; right: max(28px, env(safe-area-inset-right, 0px)); bottom: max(24px, env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
 .menu-side .go { font-size: 58px; padding: 14px 58px 8px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35); }
 .menu-side .credit { margin: 0; }
+/* pinned above RIDE: your name tag (as others see it) and this week's board */
+.pin-card { width: 310px; display: grid; gap: 10px; padding: 12px 14px; background: rgba(4, 18, 26, 0.8); border: 1px solid var(--line); border-radius: 8px; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: 0 10px 34px rgba(0, 0, 0, 0.3); }
+.pin-tag { display: grid; gap: 5px; }
+.pin-card .lbl { font-size: 12px; }
+.tag-edit { display: flex; align-items: center; gap: 8px; background: rgba(5, 20, 29, 0.65); border: 1px solid var(--line); border-radius: 4px; padding: 2px 9px; }
+.tag-edit:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tag-lv { font-weight: 700; font-size: 11px; letter-spacing: 0.06em; color: var(--foam); white-space: nowrap; }
+.tag-edit input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--foam); font-family: var(--display); font-weight: 800; font-size: 19px; letter-spacing: 0.04em; padding: 4px 0 3px; }
+.tag-edit input:disabled { opacity: 0.65; }
+.tag-crown { width: 20px; height: 15px; flex: none; }
+.pin-card .boards { gap: 6px; }
+.pin-card .boards .row { gap: 8px; flex-wrap: nowrap; }
+.pin-card .boards .row > .lbl { width: auto; }
+.pin-card .seg { flex-wrap: nowrap; min-width: 0; }
+.pin-card .seg button { font-size: 12px; padding: 5px 8px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pin-card .board-list { max-height: min(232px, 30vh); overflow-y: auto; overscroll-behavior: contain; }
+.pin-card .board-list li { font-size: 12px; }
+.pin-card .mp-status { margin: 0; font-size: 11px; }
 /* where to ride */
 #lobbyPick { position: absolute; inset: 0; z-index: 26; background: rgba(4, 18, 26, 0.72); display: grid; place-items: center; padding: 16px; }
 .pick-panel { width: min(100%, 380px); background: var(--panel-solid); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; display: grid; gap: 12px; }
@@ -261,6 +279,11 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 .ski-opt em.price.owned { color: var(--mist); letter-spacing: 0.08em; }
 .ski-opt[aria-selected="true"] em.price.owned { color: var(--accent-ink); }
 .ski-opt.locked[aria-selected="true"] em.price { color: var(--accent-ink); }
+/* the admin's own skis */
+.ski-opt.admin-ski { border-color: #ffc531; box-shadow: inset 0 0 0 1px rgba(255, 197, 49, 0.35); }
+.ski-opt.admin-ski em.price { color: #ffc531; letter-spacing: 0.12em; }
+.ski-opt.admin-ski[aria-selected="true"] { background: #ffc531; border-color: #ffc531; color: #15120a; }
+.ski-opt.admin-ski[aria-selected="true"] em.price, .ski-opt.admin-ski[aria-selected="true"] small { color: #15120a; }
 .trimx button, .buy { background: transparent; border: 1px solid var(--cash); color: var(--cash); border-radius: 4px; padding: 6px 12px 5px; font-family: var(--display); font-weight: 800; letter-spacing: 0.08em; font-size: 15px; }
 .trimx button:hover:not(:disabled), .buy:hover:not(:disabled) { background: var(--cash); color: var(--abyss); }
 .trimx button:disabled, .buy:disabled, .go:disabled { opacity: 0.45; cursor: default; }
@@ -330,17 +353,40 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
   .menu-panel { width: 100%; gap: 8px; padding-bottom: 0; }
   .menu-head h1 { font-size: clamp(32px, 10vw, 44px); }
   .menu-head .tag { display: none; }
-  .tab-body { padding-bottom: 96px; }
+  .tab-body { padding-bottom: calc(var(--side-h, 96px) + 6px); }
   /* phones: ride and controls in a bar along the bottom */
   .menu-side { left: 0; right: 0; bottom: 0; flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; padding: 10px max(16px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background: linear-gradient(0deg, rgba(4, 18, 26, 0.95) 60%, rgba(4, 18, 26, 0)); }
   .menu-side .go { font-size: 38px; padding: 10px 34px 6px; order: 2; }
   .menu-side .ghost { order: 1; padding: 10px 12px 8px; font-size: 15px; }
   .menu-side .credit { order: 1; font-size: 10px; }
+  .menu-side { flex-wrap: wrap; row-gap: 8px; }
+  .pin-card { order: 0; flex: 1 1 100%; width: auto; gap: 6px; padding: 8px 10px; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); align-items: start; column-gap: 10px; }
+  .pin-tag { gap: 3px; }
+  .tag-edit input { font-size: 16px; }
+  .pin-card .board-list { max-height: 72px; }
+  .pin-card .board-list li { padding: 2px 6px; }
+  .pin-card .boards .row > .lbl { display: none; }
+  .pin-card .seg button { padding: 4px 6px 3px; font-size: 11px; }
+  .pin-card .boards .mp-status { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .mini { display: none; }
   .hud-btns .icon-btn { padding: 9px 9px 8px; }
   .score-row.dim { display: none; }
   .race-hud { top: max(104px, calc(env(safe-area-inset-top, 0px) + 98px)); }
   .race-goal { display: none; }
+}
+/* phones on their side: the pinned card, RIDE and controls in a column on
+   the right, the tabs on the left */
+@media (max-height: 520px) and (min-width: 640px) {
+  .menu-panel { width: calc(100% - 300px); padding-right: 8px; }
+  .tab-body { padding-bottom: 10px; }
+  .menu-side { left: auto; top: max(8px, env(safe-area-inset-top, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: max(8px, env(safe-area-inset-bottom, 0px)); width: 280px; flex-direction: column; flex-wrap: nowrap; align-items: flex-end; justify-content: flex-end; gap: 6px; padding: 0; background: none; }
+  .pin-card { flex: 0 1 auto; align-self: stretch; min-height: 0; overflow: hidden; display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .pin-card .boards { min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .pin-card .board-list { max-height: none; min-height: 0; }
+  .pin-card .boards .row > .lbl { display: inline; }
+  .menu-side .go { order: 0; font-size: 34px; padding: 8px 30px 5px; }
+  .menu-side .ghost { order: 0; padding: 7px 12px 5px; font-size: 14px; }
+  .menu-side .credit { order: 0; }
 }
 @media (pointer: coarse) {
   .cluster { bottom: max(8px, env(safe-area-inset-bottom, 0px)); }

@@ -69,7 +69,7 @@ export class Career {
       daily: { day: 0, prog: {}, done: {}, sweep: false },
       streak: { last: 0, n: 0 },
       cos: [], // style items bought, as 'kind:id'
-      eq: {}, // style items worn: { wrap, jet, fit, tag }
+      eq: {}, // style items worn: { wrap, jet, dec, glow, fit, tag }
       wk: { w: 0, tricks: 0, race: {} }, // this week's bests (leaderboards)
     };
     if (!d || typeof d !== 'object') return fresh;
@@ -105,7 +105,7 @@ export class Career {
       for (const [k, v] of Object.entries(REFUNDS)) if (d.cos.includes(k)) out.cash += v;
       out.cos = [...new Set(d.cos.filter((k) => typeof k === 'string' && itemOf(...k.split(':'))))];
     }
-    if (d.eq && typeof d.eq === 'object') for (const k of ['wrap', 'jet', 'fit', 'tag']) if (typeof d.eq[k] === 'string' && itemOf(k, d.eq[k])) out.eq[k] = d.eq[k];
+    if (d.eq && typeof d.eq === 'object') for (const k of ['wrap', 'jet', 'dec', 'glow', 'fit', 'tag']) if (typeof d.eq[k] === 'string' && itemOf(k, d.eq[k])) out.eq[k] = d.eq[k];
     if (d.wk && typeof d.wk === 'object') {
       out.wk.w = int(d.wk.w, 0, 1e6, 0);
       out.wk.tricks = Number.isFinite(d.wk.tricks) ? d.wk.tricks : 0;
@@ -154,11 +154,14 @@ export class Career {
   }
 
   owns(id) {
+    // the admin's own skis come with the admin code, never from a save
+    const sk = SKIS.find((s) => s.id === id);
+    if (sk && sk.admin) return !!this.isAdmin;
     return this.data.owned.includes(id);
   }
 
   buy(spec) {
-    if (this.owns(spec.id)) return 'owned';
+    if (spec.admin || this.owns(spec.id)) return 'owned';
     if (!this.spend(spec.price || 0)) return 'poor';
     this.data.owned.push(spec.id);
     this.save();

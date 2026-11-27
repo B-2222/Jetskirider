@@ -220,12 +220,14 @@ class Game {
     this.boards = new Boards(this.accounts);
     this.careerKey = this.career.key;
     // the garage in price order
-    this.order = SKIS.map((s, i) => i).sort((a, b) => (SKIS[a].price || 0) - (SKIS[b].price || 0));
+    this.order = SKIS.map((s, i) => i).sort((a, b) => (SKIS[a].admin ? 1e9 : SKIS[a].price || 0) - (SKIS[b].admin ? 1e9 : SKIS[b].price || 0));
     // the last ski you rode, if you own it (?ski= picks any, for testing)
     const oldIdx = parseInt(store.get('ski', '-1'), 10);
     const want = params.get('ski') || store.get('ski-id', SKIS[oldIdx] ? SKIS[oldIdx].id : START_SKI);
     let idx = SKIS.findIndex((s) => s.id === want);
-    if (idx < 0 || (!params.get('ski') && !this.career.owns(SKIS[idx].id))) idx = SKIS.findIndex((s) => s.id === START_SKI);
+    // the admin's own skis wait for the admin code (it unlocks a moment later)
+    this.adminSkiWanted = idx >= 0 && SKIS[idx].admin ? idx : -1;
+    if (idx < 0 || SKIS[idx].admin || (!params.get('ski') && !this.career.owns(SKIS[idx].id))) idx = SKIS.findIndex((s) => s.id === START_SKI);
     this.skiIndex = idx;
     this.cwIndex = {};
     this.spec = this.tuned(SKIS[this.skiIndex]);
@@ -378,7 +380,8 @@ class Game {
     this.model = new JetskiModel(spec, cw);
     applyFinish(this.model.group, look.finish, cw);
     if (this.flair) this.flair.dispose();
-    this.flair = addFlair(this.model, look, spec, this.scene);
+    const has = (k) => (eq[k] && this.career.hasCos(k, eq[k]) ? eq[k] : null);
+    this.flair = addFlair(this.model, look, spec, this.scene, { dec: has('dec'), glow: has('glow') });
     this.skiGroup.add(this.model.group);
     this.rider = new Rider(riderLook(cw, eq.fit));
     this.skiGroup.add(this.rider.group);
@@ -416,8 +419,9 @@ class Game {
 
   // step through the garage in price order
   stepSki(d) {
-    const k = this.order.indexOf(this.skiIndex);
-    this.selectSki(this.order[(k + d + this.order.length) % this.order.length]);
+    const order = this.order.filter((i) => !SKIS[i].admin || this.career.isAdmin);
+    const k = Math.max(0, order.indexOf(this.skiIndex));
+    this.selectSki(order[(k + d + order.length) % order.length]);
   }
 
   buySki() {
@@ -510,6 +514,18 @@ class Game {
     $('mXpFill').style.transform = `scaleX(${frac.toFixed(3)})`;
     $('mXpText').textContent = d.lv >= MAX_LEVEL ? 'Max level' : d.xp.toLocaleString() + ' / ' + xpFor(d.lv).toLocaleString() + ' XP';
     $('btnPrestige').hidden = !this.career.canPrestige();
+    this.refreshTagUi();
+  }
+
+  // the pinned name tag: as everyone else sees it over your ski
+  refreshTagUi() {
+    const d = this.career.data;
+    $('tagLv').textContent = (d.pr ? '★' + d.pr + ' ' : '') + 'LV ' + d.lv;
+    const tag = d.eq.tag && this.career.hasCos('tag', d.eq.tag) ? itemOf('tag', d.eq.tag) : null;
+    $('mpName').style.color = tag ? tag.color : '';
+    const cr = $('tagCrown');
+    cr.hidden = !this.crown;
+    cr.style.fill = ['', '#ffd54a', '#d9e2e8', '#e0a36a'][this.crown || 0] || '';
   }
 
   // ------------------------------------------------------------- daily
@@ -557,7 +573,9 @@ class Game {
   }
 
   // ------------------------------------------------------------- leaderboards
+  // (the admin's own skis stay off the boards, so they stay fair)
   weekTrick(pts) {
+    if (this.spec.admin) return;
     const wk = this.career.week(thisWeek());
     if (pts <= wk.tricks) return;
     wk.tricks = pts;
@@ -567,6 +585,7 @@ class Game {
   }
 
   weekRace(time) {
+    if (this.spec.admin) return;
     const wk = this.career.week(thisWeek());
     const prev = wk.race[MAP.id];
     if (prev && prev <= time) return;
@@ -591,11 +610,17 @@ class Game {
     const ol = $('boardList');
     if ((this.boardKind || 'tricks') !== kind) return;
     ol.innerHTML = rows.length ? rows.map((r, i) => `<li class="${r.me ? 'me' : ''}${i < 3 ? ' top' + (i + 1) : ''}"><span>${i + 1}. ${r.name}</span><b>${fmt(r.v)}</b></li>`).join('') : '<li class="empty">Nobody yet this week. Be first!</li>';
+    // a crown on the pinned tag (checked once here, then every 90 s riding)
+    if (this.accounts.state === 'in' && !this.crownSeen) {
+      this.crownSeen = true;
+      this.checkCrown();
+    }
   }
 
   // a crown online if I am top 3 this week (checked now and then)
   async checkCrown() {
     this.crown = await this.boards.crown(['tricks', 'race-' + MAP.id]);
+    this.refreshTagUi();
   }
 
   // a message across the top: missions, purchases, race results
@@ -993,7 +1018,11 @@ class Game {
       // the admin's own wrap
       this.career.isAdmin = true;
       this.refreshAdminWrap();
+      // back on the admin ski you rode last time
+      if (this.adminSkiWanted >= 0 && this.state === 'menu') this.selectSki(this.adminSkiWanted);
+      this.adminSkiWanted = -1;
       this.buildSki();
+      this.refreshMenu();
       // the all-time rider count, for the admin's eyes
       this.accounts.watchRiders((n) => {
         this.accounts.riders = n;
@@ -1079,6 +1108,18 @@ class Game {
       // one at a time, so each gift reaches its rider
       setTimeout(() => ($('admGift').disabled = false), 3000);
     });
+    // the admin's own skis, one tap away
+    for (const sk of SKIS.filter((x) => x.admin)) {
+      const b = document.createElement('button');
+      b.textContent = sk.name + ' · ' + sk.tagline.split('·').pop().trim();
+      b.dataset.ski = sk.id;
+      b.addEventListener('click', () => {
+        this.selectSki(SKIS.indexOf(sk));
+        this.showTab('garage');
+        $('admStatus').textContent = sk.name + ' in the garage. Hit RIDE.';
+      });
+      $('admSkis').appendChild(b);
+    }
     $('admWrap').addEventListener('click', () => {
       const on = this.career.data.eq.wrap === 'barsa';
       this.career.wear('wrap', on ? null : 'barsa');
@@ -1151,6 +1192,10 @@ class Game {
       const pr = document.createElement('em');
       pr.className = 'price';
       b.append(s.name, hp, pr);
+      if (s.admin) {
+        b.classList.add('admin-ski');
+        b.hidden = true;
+      }
       b.addEventListener('click', () => this.selectSki(i));
       list.appendChild(b);
     }
@@ -1192,6 +1237,9 @@ class Game {
     this.vtsBars = [...bars.children];
 
     $('btnRide').addEventListener('click', () => this.rideClick());
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => $('menu').style.setProperty('--side-h', Math.ceil($('menuSide').offsetHeight) + 'px')).observe($('menuSide'));
+    }
     this.setupTabs();
     $('pickClose').addEventListener('click', () => this.closePick());
     $('btnHelp').addEventListener('click', () => ($('help').hidden = false));
@@ -1589,15 +1637,16 @@ class Game {
       const i = +b.dataset.i;
       const sk = SKIS[i];
       const own = C.owns(sk.id);
+      if (sk.admin) b.hidden = !C.isAdmin;
       b.setAttribute('aria-selected', i === this.skiIndex ? 'true' : 'false');
       b.classList.toggle('locked', !own);
       const pr = b.querySelector('.price');
-      const t = own ? 'OWNED' : money(sk.price);
+      const t = sk.admin ? 'ADMIN' : own ? 'OWNED' : money(sk.price);
       if (pr.textContent !== t) pr.textContent = t;
       pr.classList.toggle('owned', own);
     }
     // buy / owned
-    const own = C.owns(s.id) || !!params.get('ski');
+    const own = C.owns(s.id) || (!!params.get('ski') && !s.admin);
     $('buyRow').hidden = own;
     if (!own) {
       $('btnBuy').textContent = 'BUY ' + money(s.price);
@@ -1622,6 +1671,7 @@ class Game {
       }
     }
     $('btnRide').disabled = !own;
+    for (const b of $('admSkis').children) b.setAttribute('aria-pressed', b.dataset.ski === s.id ? 'true' : 'false');
     // map
     for (const b of $('segMap').children) b.setAttribute('aria-pressed', b.dataset.map === MAP.id ? 'true' : 'false');
     const rb = C.race(MAP.id);
@@ -2679,7 +2729,7 @@ class Game {
     this.race.update(dt, time, p, this.state === 'ride' && !this.wipe.on, this.mp.worldClock());
     this.updateRaceQueue();
     if (this.rain) this.rain.update(dt, this.camera.position);
-    if (this.flair) this.flair.update(now / 1000, p.px, surfAt(p.px, p.pz), p.pz, p.py, p.yaw);
+    if (this.flair) this.flair.update(now / 1000, p.px, surfAt, p.pz, p.py, p.yaw, { rpm: T.rpmN, thr: T.power * T.pumpLoad, spd: T.speed / this.spec.top, day: this.sky.time.ambient });
     if (this.boltT !== undefined) {
       // lightning: a double flash every so often
       this.boltT -= dt;

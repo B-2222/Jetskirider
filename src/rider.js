@@ -90,15 +90,89 @@ function makeCanvasTex(w, h, draw) {
   return t;
 }
 
-// Life vest: u = 0 (and 1) is the front centre, v runs up the body. Black
-// with red side panels and a red band across the chest.
+// The kit with no outfit on: a black and red vest, a dark tee, dark shorts
+// with a panel and cap in the ski's trim colour.
 const RED = '#d3212b';
-function vestTexture() {
+const STOCK = { pattern: 'plain', vest: '#15171b', panel: RED, text: '#ffffff', chest: RED, tee: 0x2b2e34, shorts: '#20242b', stripe: '#f2f2ee', accent: 0xd3212b, gloves: null, shoe: 0x1d2026 };
+
+// a little deterministic noise for the camo
+function rnd(seed) {
+  let x = seed >>> 0 || 1;
+  return () => ((x = (x * 1664525 + 1013904223) >>> 0) / 4294967296);
+}
+
+// Life vest: u = 0 (and 1) is the front centre, v runs up the body.
+// The kit picks the colours and the print (pattern).
+function vestTexture(k) {
   return makeCanvasTex(512, 256, (g, w, h) => {
     const Y = (v) => h * (1 - v);
-    g.fillStyle = '#15171b';
+    g.fillStyle = k.vest;
     g.fillRect(0, 0, w, h);
-    // subtle foam-panel shading so it is not a flat black
+    // the print, under the panels and straps
+    g.fillStyle = k.panel;
+    if (k.pattern === 'split') {
+      // a big diagonal: the lower half of the front and back in the panel colour
+      for (const x0 of [0, 0.5]) {
+        g.beginPath();
+        g.moveTo(w * (x0 - 0.02), Y(0.06));
+        g.lineTo(w * (x0 + 0.52), Y(0.06));
+        g.lineTo(w * (x0 + 0.52), Y(0.28));
+        g.lineTo(w * (x0 - 0.02), Y(0.62));
+        g.fill();
+      }
+    } else if (k.pattern === 'chevron') {
+      // bold chevrons pointing up the front and back
+      for (const cx of [0, 0.5, 1]) {
+        for (const v0 of [0.18, 0.4]) {
+          g.beginPath();
+          g.moveTo(w * (cx - 0.2), Y(v0));
+          g.lineTo(w * cx, Y(v0 + 0.16));
+          g.lineTo(w * (cx + 0.2), Y(v0));
+          g.lineTo(w * (cx + 0.2), Y(v0 - 0.09));
+          g.lineTo(w * cx, Y(v0 + 0.07));
+          g.lineTo(w * (cx - 0.2), Y(v0 - 0.09));
+          g.fill();
+        }
+      }
+    } else if (k.pattern === 'wave') {
+      // rolling swell lines round the body
+      g.lineWidth = h * 0.05;
+      g.strokeStyle = k.panel;
+      for (const v0 of [0.2, 0.36, 0.52]) {
+        g.beginPath();
+        for (let x = 0; x <= w; x += 4) {
+          const v = v0 + 0.04 * Math.sin((x / w) * Math.PI * 8);
+          if (x === 0) g.moveTo(x, Y(v));
+          else g.lineTo(x, Y(v));
+        }
+        g.stroke();
+      }
+    } else if (k.pattern === 'race') {
+      // twin racing stripes down the front and the back
+      for (const cx of [0.04, 0.5, 0.96]) {
+        g.fillRect(w * (cx - 0.075), 0, w * 0.04, h);
+        g.fillRect(w * (cx + 0.035), 0, w * 0.04, h);
+      }
+    } else if (k.pattern === 'reflect') {
+      // reflective tape: two bands round the body and down the sides
+      g.fillRect(0, Y(0.3), w, h * 0.05);
+      g.fillRect(0, Y(0.5), w, h * 0.05);
+    } else if (k.pattern === 'camo') {
+      const r = rnd(7);
+      const cols = k.camo || [k.panel];
+      for (let i = 0; i < 90; i++) {
+        g.fillStyle = cols[i % cols.length];
+        const x = r() * w, y = r() * h, rr = 10 + r() * 26;
+        g.beginPath();
+        for (let a = 0; a < 7; a++) {
+          const t = (a / 7) * Math.PI * 2;
+          const d = rr * (0.6 + r() * 0.6);
+          g.lineTo(x + Math.cos(t) * d * 1.4, y + Math.sin(t) * d * 0.8);
+        }
+        g.fill();
+      }
+    }
+    // subtle foam-panel shading so it is not flat
     for (const x of [0.06, 0.25, 0.5, 0.75, 0.94]) {
       const gr = g.createLinearGradient(w * (x - 0.07), 0, w * (x + 0.07), 0);
       gr.addColorStop(0, 'rgba(255,255,255,0)');
@@ -107,12 +181,13 @@ function vestTexture() {
       g.fillStyle = gr;
       g.fillRect(w * (x - 0.07), 0, w * 0.14, h);
     }
-    // red side panels
-    g.fillStyle = RED;
-    g.fillRect(w * 0.2, Y(0.84), w * 0.1, h * 0.75);
-    g.fillRect(w * 0.7, Y(0.84), w * 0.1, h * 0.75);
-    // red band across the chest and back
-    g.fillRect(0, Y(0.72), w, h * 0.06);
+    // side panels and the band across the chest and back
+    g.fillStyle = k.panel;
+    if (k.pattern === 'plain' || k.pattern === 'race' || k.pattern === 'reflect') {
+      g.fillRect(w * 0.2, Y(0.84), w * 0.1, h * 0.75);
+      g.fillRect(w * 0.7, Y(0.84), w * 0.1, h * 0.75);
+    }
+    if (k.pattern !== 'race' && k.pattern !== 'camo') g.fillRect(0, Y(0.72), w, h * 0.06);
     // dark binding top and bottom
     g.fillStyle = '#0b0c0e';
     g.fillRect(0, 0, w, Y(0.9));
@@ -142,24 +217,24 @@ function vestTexture() {
     }
     // brand on the back and a small one on the chest
     g.save();
-    g.fillStyle = '#ffffff';
+    g.fillStyle = k.text;
     g.font = 'italic 900 44px "Arial Black", Arial, sans-serif';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillText('SEA-DOO', w * 0.5, Y(0.45));
-    g.fillStyle = RED;
+    g.fillStyle = k.chest || k.text;
     g.font = 'italic 800 20px "Arial Black", Arial, sans-serif';
     g.fillText('SEA-DOO', w * 0.9, Y(0.82));
     g.restore();
   });
 }
 
-// Boardshorts: dark with a bold colour panel and a stripe down each side.
-function shortsTexture(trim) {
+// Boardshorts: a base colour with a bold panel and a stripe down each side.
+function shortsTexture(k) {
   return makeCanvasTex(256, 128, (g, w, h) => {
-    g.fillStyle = '#20242b';
+    g.fillStyle = k.shorts;
     g.fillRect(0, 0, w, h);
-    g.fillStyle = hex(trim);
+    g.fillStyle = k.shortsPanel;
     for (const x0 of [0.25, 0.75]) {
       g.beginPath();
       g.moveTo(w * (x0 - 0.13), 0);
@@ -168,7 +243,7 @@ function shortsTexture(trim) {
       g.lineTo(w * (x0 - 0.2), h);
       g.fill();
     }
-    g.fillStyle = '#f2f2ee';
+    g.fillStyle = k.stripe;
     for (const x0 of [0.5, 0.0, 1.0]) g.fillRect(w * x0 - 3, 0, 6, h);
     g.fillStyle = '#121418';
     g.fillRect(0, 0, w, h * 0.09);
@@ -187,18 +262,22 @@ export class Rider {
     };
     const tex = (t) => (this.texs.push(t), t);
     const trim = colorway.trim;
+    // the outfit (a whole kit), or the stock one in the ski's trim colour
+    const kit = { ...STOCK, shortsPanel: hex(trim), cap: trim, ...(colorway.kit || {}) };
     const mSkin = M({ color: 0xc78f6a, roughness: 0.5, sheen: 0.3, sheenColor: new THREE.Color(0xe8b896), sheenRoughness: 0.5 });
-    const mSuit = M({ color: 0x2b2e34, roughness: 0.85 }); // the tee under the vest
-    const mShorts = M({ map: tex(shortsTexture(trim)), roughness: 0.85, side: THREE.DoubleSide });
-    const vt = tex(vestTexture());
+    const mSuit = M({ color: kit.tee, roughness: 0.85 }); // the tee under the vest
+    const mShorts = M({ map: tex(shortsTexture(kit)), roughness: 0.85, side: THREE.DoubleSide });
+    const vt = tex(vestTexture(kit));
     vt.repeat.x = -1; // the loft runs round the body the other way: unmirror the print
     const mVest = M({ map: vt, roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.5 });
-    const mShoe = M({ color: 0x1d2026, roughness: 0.75 });
+    const mShoe = M({ color: kit.shoe, roughness: 0.75 });
     const mSole = M({ color: 0x08090a, roughness: 0.95 });
-    const mRed = M({ color: 0xd3212b, roughness: 0.5 });
+    const mRed = M({ color: kit.accent, roughness: 0.5 }); // wrist band and shoe strap
+    // riding gloves, or bare hands
+    const mGlove = kit.gloves != null ? M({ color: kit.gloves, roughness: 0.8, sheen: 0.4, sheenColor: new THREE.Color(0xffffff), sheenRoughness: 0.7 }) : mSkin;
     const mBlack = M({ color: 0x0b0c0e, roughness: 0.6 });
     const mHair = M({ color: 0x2a1c12, roughness: 0.95, sheen: 0.5, sheenColor: new THREE.Color(0x5a4030) });
-    const mCap = M({ color: trim, roughness: 0.75 });
+    const mCap = M({ color: kit.cap, roughness: 0.75 });
     const mCapUnder = M({ color: 0x15171a, roughness: 0.8, side: THREE.DoubleSide });
     const mLens = M({ color: 0x0a0c10, metalness: 0.9, roughness: 0.08, clearcoat: 1, side: THREE.DoubleSide });
     const mEye = M({ color: 0x1a1210, roughness: 0.3 });
@@ -348,17 +427,17 @@ export class Rider {
       this.group.add(glove);
       const fg = new THREE.CylinderGeometry(0.029, 0.029, 0.084, 18, 1, true, -1.0, 5.4);
       fg.rotateX(Math.PI / 2);
-      mk(fg, mSkin, glove);
+      mk(fg, mGlove, glove);
       for (const z of [-0.028, -0.009, 0.01, 0.028]) {
-        const kn = mk(new THREE.TorusGeometry(0.029, 0.008, 6, 14, 3.6), mSkin, glove);
+        const kn = mk(new THREE.TorusGeometry(0.029, 0.008, 6, 14, 3.6), mGlove, glove);
         kn.position.z = z;
         kn.rotation.z = -1.4;
       }
-      const back = mk(new THREE.SphereGeometry(0.046, 14, 10), mSkin, glove);
+      const back = mk(new THREE.SphereGeometry(0.046, 14, 10), mGlove, glove);
       back.scale.set(0.95, 0.5, 0.9);
       back.position.set(-0.03, 0.028, 0);
       back.rotation.z = 0.7;
-      const thumb = mk(new THREE.CapsuleGeometry(0.0105, 0.038, 4, 8), mSkin, glove);
+      const thumb = mk(new THREE.CapsuleGeometry(0.0105, 0.038, 4, 8), mGlove, glove);
       thumb.position.set(-0.022, -0.028, (i === 0 ? 1 : -1) * 0.042);
       thumb.rotation.set(Math.PI / 2, 0, 0.9);
       this.arm.push({
@@ -366,7 +445,7 @@ export class Rider {
         sleeve: mk(G.sleeve, mSuit),
         fore: mk(G.fore, mSkin),
         // a red band on one wrist, a black one on the other
-        cuff: mk(G.cuff, i === 0 ? mRed : mBlack),
+        cuff: mk(G.cuff, i === 0 || kit.gloves != null ? mRed : mBlack),
         shoulder: joint(0.064, mSuit, 1.1),
         elbow: joint(0.041, mSkin),
         glove,

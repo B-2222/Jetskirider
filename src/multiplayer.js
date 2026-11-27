@@ -88,7 +88,9 @@ class Remote {
     }
     const tag = typeof st.tag === 'string' ? itemOf('tag', st.tag) : null;
     this.tagColor = tag ? tag.color : '';
-    const key = spec.id + '|' + cwI + '|' + wrap + '|' + fit;
+    const dec = typeof st.dec === 'string' && itemOf('dec', st.dec) ? st.dec : '';
+    const glow = typeof st.glow === 'string' && itemOf('glow', st.glow) ? st.glow : '';
+    const key = spec.id + '|' + cwI + '|' + wrap + '|' + fit + '|' + dec + '|' + glow;
     if (key === this.lookKey) return;
     this.lookKey = key;
     this.dispose(true);
@@ -99,7 +101,7 @@ class Remote {
     this.model = new JetskiModel(spec, look.cw);
     applyFinish(this.model.group, look.finish, look.cw);
     if (this.flair) this.flair.dispose();
-    this.flair = addFlair(this.model, look, spec, this.mp.game.scene);
+    this.flair = addFlair(this.model, look, spec, this.mp.game.scene, { dec, glow });
     this.rider = new Rider(riderLook(look.cw, fit));
     this.group.add(this.model.group, this.rider.group);
     this.applyEnv();
@@ -116,7 +118,7 @@ class Remote {
     if (on === this.shadow) return;
     this.shadow = on;
     this.group.traverse((o) => {
-      if (o.isMesh) o.castShadow = on;
+      if (o.isMesh && !o.userData.decal) o.castShadow = on;
     });
   }
 
@@ -216,7 +218,10 @@ class Remote {
       if (far || !surfAt) this.flair.hide();
       else {
         const hx = new THREE.Vector3(1, 0, 0).applyQuaternion(this.quat);
-        this.flair.update(now, this.pos.x, surfAt(this.pos.x, this.pos.z), this.pos.z, this.pos.y, Math.atan2(-hx.z, hx.x));
+        // their engine, from what they send: pump power and speed
+        const pw = Number.isFinite(s.pw) ? clamp(s.pw, 0, 1) : 0;
+        const spd = Math.hypot(this.vel.x, this.vel.z) / (this.spec.top || 30);
+        this.flair.update(now, this.pos.x, surfAt, this.pos.z, this.pos.y, Math.atan2(-hx.z, hx.x), { rpm: 0.11 + 0.89 * Math.max(Math.pow(pw, 0.6), spd * 0.8), thr: pw, spd, day: this.mp.game.sky.time.ambient });
       }
     }
     this.frame++;

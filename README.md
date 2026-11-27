@@ -108,7 +108,8 @@ TRIM-X kits are bought per sit-down ski. Stage 1 extends the trim range for a pr
 
 - **Levels 1 to 50**: XP from every trick (worked out per trick, so combos do not skip the climb), races, missions and daily challenges. Each level pays cash, every five levels give a new title (Grom, Rookie, Wave Rat... Sea-Doo God) shown with your name online, and some style items unlock free. At 50 you can **prestige**: back to level 1 with a star (up to 10) and +10% cash for good per star.
 - **Daily challenges**: three a day, the same for everyone, new at midnight Perth time, with a bonus for doing all three. Riding on days in a row builds a streak bonus (up to day 10).
-- **Style shop**: ski wraps (Hot Pink, Carbon, Neon Glow, Chrome, Solid Gold), jet stream colours, outfits and name tag colours. The admin also has their own wrap, Barsa Edition (black chrome and glowing gold), switched on in the admin panel. Everyone online sees them.
+- **Style shop**: ski wraps (Hot Pink, Carbon, Neon Glow, Chrome, Solid Gold), jet stream colours, animated decals (Scanner, Liquid Chrome, Tide Line, Afterburn, Shift Lights: some react to the revs, the throttle or your speed), underglow (Ice, Toxic, Ultraviolet, Red Line, Chase), full rider kits (vest, tee, shorts, cap and gloves) and name tag colours. The admin also has their own wrap, Barsa Edition (black chrome and glowing gold), switched on in the admin panel. Everyone online sees them.
+- **The admin's own skis**: the RXP-X 2000 HYPER (2000 hp) and the HYPER STANDUP 1000 (1000 hp), only with the admin code. Both carry 3.57 hp per kg; thrust and top speed are scaled from the real-feeling 600 hp and race stand-up. They stay off the weekly leaderboards.
 - **Weekly leaderboard**: the biggest single trick of the week and the fastest lap on each map's race, Monday to Sunday (Perth time). You need an account to be on it; the top 3 wear a crown over their name online.
 
 ## Maps

@@ -557,8 +557,9 @@ export class JetskiModel {
     const common = { ringFn, xOf: P.xOf, nS, sPow: 1.35 };
     add(loftStrip({ ...common, a: 0, b: 3, sub: 4, mode: 'start' }), mHull);
     for (const side of [1, -1]) {
-      add(loftStrip({ ...common, a: 3, b: 4, sub: 3, smooth: false, mode: 'side', sideSign: side }), side > 0 ? mHullSideR : mHullSideL);
-      add(loftStrip({ ...common, a: 4, b: 6, sub: 4, mode: 'side', sideSign: side }), side > 0 ? mUpperR : mUpperL);
+      // (part: where the animated decals can go: 0 hull side, 1 upper side)
+      add(loftStrip({ ...common, a: 3, b: 4, sub: 3, smooth: false, mode: 'side', sideSign: side }), side > 0 ? mHullSideR : mHullSideL).userData.part = 0;
+      add(loftStrip({ ...common, a: 4, b: 6, sub: 4, mode: 'side', sideSign: side }), side > 0 ? mUpperR : mUpperL).userData.part = 1;
     }
     const cDeck = new THREE.Color(cw.deck);
     const cAccent = new THREE.Color(cw.accent);
@@ -859,7 +860,7 @@ export class JetskiModel {
     // --- hull, sides, tray and hood ------------------------------------------
     const common = { ringFn, xOf: P.xOf, nS: 80, sPow: 1.3 };
     add(loftStrip({ ...common, a: 0, b: 3, sub: 4, mode: 'start' }), mHull);
-    for (const side of [1, -1]) add(loftStrip({ ...common, a: 3, b: 6, sub: 4, mode: 'side', sideSign: side }), side > 0 ? mSideR : mSideL);
+    for (const side of [1, -1]) add(loftStrip({ ...common, a: 3, b: 6, sub: 4, mode: 'side', sideSign: side }), side > 0 ? mSideR : mSideL).userData.part = 2;
     const cDeck = new THREE.Color(cw.deck);
     const cAccent = new THREE.Color(cw.accent);
     const cMat = new THREE.Color(0x1b1e21);

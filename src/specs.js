@@ -436,6 +436,62 @@ SKIS.push(
   })
 );
 
+// The admin's own two (admin: true): never in the shop, only with the admin
+// code. Both carry 3.57 hp per kg with the rider on, so they pull the same
+// way: the static jet thrust grows with power^(2/3) from the 600 and the race
+// stand-up, the top speed with power^(1/3) (water and air drag go with speed
+// cubed, a heavier hull drags a bit more), and the grip and the hardest carve
+// go up for the stiffer, built hulls.
+SKIS.push(
+  from('rxp600', {
+    id: 'hyper2000',
+    admin: true,
+    price: 0,
+    name: 'RXP-X 2000 HYPER',
+    tagline: 'Quad-turbo build · 2000 hp',
+    blurb: 'The admin\'s own. 2000 hp in a stretched, stiffened race hull: 0 to 200 km/h in 3.5 seconds with launch control and about 220 flat out. Carve early: at that speed the turns get very wide.',
+    launchRpm: 0.7,
+    L: 3.45,
+    B: 1.28,
+    mass: 560, // bigger engine, intercoolers and a stronger hull
+    thrust: 17400, // 7800 x (2000 / 600)^(2/3)
+    top: 61.1, // ~220 km/h
+    jet: 80,
+    grip: 44,
+    gMax: 2.0,
+    sternBias: 1.25,
+    idleRpm: 2000,
+    maxRpm: 9500,
+    stats: { speed: 1.0, accel: 1.0, grip: 1.0, tricks: 0.3 },
+    colorways: [
+      { name: 'Stealth Black / Gold', hull: 0x0a0b0d, deck: 0x131417, accent: 0xffc531, seat: 0x0c0d0f, trim: 0xffc531 },
+      { name: 'Titanium / Red', hull: 0x16181c, deck: 0x7c858e, accent: 0xff2a2a, seat: 0x0f1013, trim: 0xff2a2a },
+    ],
+  }),
+  from('srace', {
+    id: 'hyper1000',
+    admin: true,
+    price: 0,
+    name: 'HYPER STANDUP 1000',
+    tagline: 'Twin-turbo two-stroke · 1000 hp',
+    blurb: 'The admin\'s own stand-up. 1000 hp on a longer race hull: 0 to 100 km/h in a second and a half, 150 flat out, and it lifts the nose off the line. It still flips, and the air is enormous.',
+    turbo: true,
+    L: 2.6,
+    B: 0.78,
+    mass: 280,
+    thrust: 11500, // 4700 x (1000 / 260)^(2/3)
+    top: 41.7, // ~150 km/h
+    jet: 60,
+    grip: 40,
+    gMax: 2.0,
+    stats: { speed: 0.95, accel: 1.0, grip: 1.0, tricks: 0.8 },
+    colorways: [
+      { name: 'Black / Gold', hull: 0x0a0b0d, deck: 0x15171a, accent: 0xffc531, seat: 0x1a1d21, trim: 0xffc531 },
+      { name: 'White / Ice', hull: 0xeef2f5, deck: 0x1b1e22, accent: 0x7fd8ff, seat: 0x1a1d21, trim: 0x7fd8ff },
+    ],
+  })
+);
+
 // TRIM-X kits (bought per ski): more trim range for a taller rooster tail.
 // The Trixx has stage 1 built in. Stand-ups have no trim to extend.
 export const TRIMX = [
