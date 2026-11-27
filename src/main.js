@@ -363,7 +363,8 @@ class Game {
     this.cwIndex[spec.id] = cwI;
     // your style: a wrap over the colourway, an outfit, a jet colour
     const eq = this.career.data.eq;
-    const look = skiLook(spec, cwI, eq.wrap);
+    const wrapIt = eq.wrap && itemOf('wrap', eq.wrap);
+    const look = skiLook(spec, cwI, wrapIt && wrapIt.admin && !this.career.isAdmin ? null : eq.wrap);
     const cw = look.cw;
     if (this.model) {
       this.skiGroup.remove(this.model.group);
@@ -379,7 +380,7 @@ class Game {
     this.rider = new Rider(riderLook(cw, eq.fit));
     this.skiGroup.add(this.rider.group);
     const jet = eq.jet && itemOf('jet', eq.jet);
-    this.effects.jet.setTint(jet ? (jet.rainbow ? 'rainbow' : jet.color) : null);
+    this.effects.jet.setTint(jet ? jet.color : null);
     this.phys.setSpec(spec);
     this.audio.setSpec(spec);
     this.ocean.uniforms.uSkiDim.value.set(spec.L * 0.56, spec.B * 0.62);
@@ -932,7 +933,6 @@ class Game {
     this.phys.fun.lowGrav = f.lowGrav ? 0.62 : 0;
     this.phys.fun.turbo = f.turbo ? 1.45 : 1;
     this.effects.mega = f.mega ? 1.7 : 1;
-    this.spray.uniforms.uRainbow.value = f.rainbow ? 1 : 0;
     this.waves.surf.allHuge = !!f.allHuge;
     this.waves.surf.forcedSet = w.huge;
     if (w.summon && w.summon !== this.lastSummon) {
@@ -986,6 +986,10 @@ class Game {
       }
       $('adminLock').hidden = true;
       $('adminPanel').hidden = false;
+      // the admin's own wrap
+      this.career.isAdmin = true;
+      this.refreshAdminWrap();
+      this.buildSki();
       // the all-time rider count, for the admin's eyes
       this.accounts.watchRiders((n) => {
         this.accounts.riders = n;
@@ -1071,6 +1075,14 @@ class Game {
       // one at a time, so each gift reaches its rider
       setTimeout(() => ($('admGift').disabled = false), 3000);
     });
+    $('admWrap').addEventListener('click', () => {
+      const on = this.career.data.eq.wrap === 'barsa';
+      this.career.wear('wrap', on ? null : 'barsa');
+      this.buildSki();
+      this.refreshAdminWrap();
+      this.refreshMenu();
+      $('admStatus').textContent = on ? 'Barsa Edition wrap off.' : 'Barsa Edition wrap on. Everyone online sees it.';
+    });
     $('admCash').addEventListener('click', () => {
       this.career.earn(10000);
       $('admStatus').textContent = 'Added $10,000 to your wallet (just you).';
@@ -1079,6 +1091,12 @@ class Game {
       mp.setWorld({ sea: 1, day: null, fun: Object.fromEntries(FUN.map((f) => [f.id, false])), huge: null });
       say('world back to normal.');
     });
+  }
+
+  refreshAdminWrap() {
+    const on = this.career.data.eq.wrap === 'barsa';
+    $('admWrap').textContent = on ? 'BARSA EDITION: ON' : 'BARSA EDITION: OFF';
+    $('admWrap').setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
   setupPost(on) {
@@ -1231,7 +1249,7 @@ class Game {
       const seg = document.createElement('div');
       seg.className = 'seg wrap';
       seg.dataset.kind = cat.kind;
-      for (const it of [{ id: '', name: cat.kind === 'wrap' ? 'Stock paint' : 'Stock' }, ...cat.items]) {
+      for (const it of [{ id: '', name: cat.kind === 'wrap' ? 'Stock paint' : 'Stock' }, ...cat.items.filter((i) => !i.admin)]) {
         const b = document.createElement('button');
         b.dataset.id = it.id;
         b.addEventListener('click', () => this.styleClick(cat.kind, it.id, b));
@@ -1304,7 +1322,7 @@ class Game {
         const has = !id || C.hasCos(kind, id);
         const armed = this.styleArmed === kind + ':' + id;
         const sub = !id ? '' : armed ? 'BUY ' + money(it.price) + '?' : has ? (worn === id ? 'WEARING' : 'OWNED') : it.lv && C.data.pr === 0 ? money(it.price) + ' · free at LV ' + it.lv : money(it.price);
-        const chip = it && (it.color !== undefined || it.cw) ? (typeof it.color === 'string' ? (it.color === 'rainbow' ? 'linear-gradient(90deg,#ff5f5f,#ffc531,#9dff3a,#5fd4ff)' : it.color) : it.rainbow ? 'linear-gradient(90deg,#ff5f5f,#ffc531,#9dff3a,#5fd4ff)' : '#' + new THREE.Color(it.cw ? it.cw.deck : it.color).getHexString()) : '';
+        const chip = it && (it.color !== undefined || it.cw) ? (typeof it.color === 'string' ? it.color : '#' + new THREE.Color(it.cw ? it.cw.deck : it.color).getHexString()) : '';
         const key = sub + '|' + (worn === id) + '|' + armed;
         if (b._key === key) continue;
         b._key = key;

@@ -9,16 +9,18 @@ export const WRAPS = [
   { id: 'neon', name: 'Neon Glow', price: 20000, cw: { hull: 0x0b0c0e, deck: 0x101114, accent: 0x39ff6a, seat: 0x101114, trim: 0x39ff6a }, finish: 'neon' },
   { id: 'chrome', name: 'Chrome', price: 30000, lv: 40, cw: { hull: 0xd9dde2, deck: 0xc8ced4, accent: 0x1a1c20, seat: 0x15171a, trim: 0x8fd8ff }, finish: 'chrome' },
   { id: 'gold', name: 'Solid Gold', price: 75000, cw: { hull: 0xd4a63a, deck: 0xe8c25a, accent: 0x1a1508, seat: 0x15120a, trim: 0xffe08a }, finish: 'gold' },
+  // the admin's own: black chrome and glowing gold, only with the admin code
+  { id: 'barsa', name: 'Barsa Edition', price: 0, admin: true, cw: { hull: 0x0c0d0f, deck: 0x14161a, accent: 0xffc531, seat: 0x0c0d0f, trim: 0xffc531 }, finish: 'owner' },
 ];
 
-// Jet stream colours (a tint over the white water); rainbow cycles.
+// Jet stream colours (a tint over the white water).
 export const JETS = [
   { id: 'ice', name: 'Ice Blue', price: 6000, lv: 10, color: 0x7fd8ff },
   { id: 'pink', name: 'Bubblegum', price: 6000, color: 0xff5fb0 },
   { id: 'lime', name: 'Toxic Lime', price: 8000, color: 0x9dff3a },
   { id: 'purple', name: 'Purple Haze', price: 8000, color: 0xa66bff },
   { id: 'gold', name: 'Gold', price: 12000, color: 0xffc531 },
-  { id: 'rainbow', name: 'Rainbow', price: 40000, lv: 50, rainbow: true },
+  { id: 'inferno', name: 'Inferno', price: 40000, lv: 50, color: 0xff5a1f },
 ];
 
 // Rider outfits: the cap and boardshorts colour.
@@ -35,7 +37,7 @@ export const TAGS = [
   { id: 'neon', name: 'Neon', price: 5000, lv: 30, color: '#39ff6a' },
   { id: 'pink', name: 'Pink', price: 5000, color: '#ff5fb0' },
   { id: 'gold', name: 'Gold', price: 12000, color: '#ffc531' },
-  { id: 'rainbow', name: 'Rainbow', price: 25000, color: 'rainbow' },
+  { id: 'ice', name: 'Ice', price: 25000, color: '#7fd8ff' },
 ];
 
 export const SHOP = [
@@ -67,6 +69,18 @@ export function applyFinish(group, finish, cw) {
       m.metalness = 1;
       m.roughness = finish === 'chrome' ? 0.12 : 0.2;
       m.clearcoat = 1;
+    } else if (finish === 'owner' && body) {
+      // black chrome
+      m.metalness = 0.9;
+      m.roughness = 0.16;
+      m.clearcoat = 1;
+      if (m.color && m.color.getHex() === cw.trim) {
+        m.emissive.setHex(cw.trim);
+        m.emissiveIntensity = 0.9;
+      }
+    } else if (finish === 'owner' && m.color && m.color.getHex() === cw.trim) {
+      m.emissive.setHex(cw.trim);
+      m.emissiveIntensity = 1.2;
     } else if (finish === 'satin' && body) {
       m.roughness = 0.55;
       m.clearcoat = 0.3;

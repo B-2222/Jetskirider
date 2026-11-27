@@ -384,7 +384,6 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 @keyframes feedIn { from { opacity: 0; transform: translateY(-4px); } }
 #tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .tag { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; white-space: nowrap; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7); will-change: transform; }
-.tag b.rainbow { background-image: linear-gradient(90deg, #ff5f5f, #ffc531, #9dff3a, #5fd4ff, #a66bff); color: #07131a; }
 .tag em { font-style: normal; font-weight: 700; font-size: 11px; letter-spacing: 0.06em; color: var(--foam); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
 .tag .crown { width: 18px; height: 14px; margin-bottom: 1px; }
 .tag b { font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: 0.04em; background: rgba(5, 20, 29, 0.6); padding: 1px 7px; border-radius: 3px; }

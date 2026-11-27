@@ -68,7 +68,7 @@ The Freestyle and Race stand-ups ride differently: no trim, a light hull that yo
 
 A day lasts 20 minutes of the shared clock: sunrise, a long day, golden hour, sunset, then a short moonlit night with stars (about two minutes) before dawn. Everyone online sees the same time of day and the same water.
 
-Only the admin changes them. Enter the admin code in the ADMIN section of the garage (the code is not stored in this repository; whoever runs the game keeps it). The admin can set the time, freeze it, let it run or run fast, change the water, and switch on extras for everyone: moon gravity in the air, turbo for all, mega spray, rainbow spray, every set huge, call a huge set right now, and send everyone to the wave zone. The admin panel also shows how many devices have played and can give cash to any rider who is online right now, or take it away with a minus amount (pick them from the list); gifts are signed with the admin key too. The admin's game signs every change with a key made from the code and every other game checks the signature, so nobody else can fake it. Riders pass the latest settings on to each other, so they hold after the admin leaves.
+Only the admin changes them. Enter the admin code in the ADMIN section of the garage (the code is not stored in this repository; whoever runs the game keeps it). The admin can set the time, freeze it, let it run or run fast, change the water, and switch on extras for everyone: moon gravity in the air, turbo for all, mega spray, every set huge, call a huge set right now, and send everyone to the wave zone. The admin panel also shows how many devices have played and can give cash to any rider who is online right now, or take it away with a minus amount (pick them from the list); gifts are signed with the admin key too. The admin's game signs every change with a key made from the code and every other game checks the signature, so nobody else can fake it. Riders pass the latest settings on to each other, so they hold after the admin leaves.
 
 ## Online
 
@@ -108,7 +108,7 @@ TRIM-X kits are bought per sit-down ski. Stage 1 extends the trim range for a pr
 
 - **Levels 1 to 50**: XP from every trick (worked out per trick, so combos do not skip the climb), races, missions and daily challenges. Each level pays cash, every five levels give a new title (Grom, Rookie, Wave Rat... Sea-Doo God) shown with your name online, and some style items unlock free. At 50 you can **prestige**: back to level 1 with a star (up to 10) and +10% cash for good per star.
 - **Daily challenges**: three a day, the same for everyone, new at midnight Perth time, with a bonus for doing all three. Riding on days in a row builds a streak bonus (up to day 10).
-- **Style shop**: ski wraps (Hot Pink, Carbon, Neon Glow, Chrome, Solid Gold), jet stream colours (including Rainbow), outfits and name tag colours. Everyone online sees them.
+- **Style shop**: ski wraps (Hot Pink, Carbon, Neon Glow, Chrome, Solid Gold), jet stream colours, outfits and name tag colours. The admin also has their own wrap, Barsa Edition (black chrome and glowing gold), switched on in the admin panel. Everyone online sees them.
 - **Weekly leaderboard**: the biggest single trick of the week and the fastest lap on each map's race, Monday to Sunday (Perth time). You need an account to be on it; the top 3 wear a crown over their name online.
 
 ## Maps

@@ -65,17 +65,13 @@ function material(uniforms) {
       uniform vec3 uWater;
       uniform vec3 uSunDir;
       uniform vec3 uSunColor;
-      uniform float uRainbow;
       uniform vec3 uTint;
-      uniform float uTintK; // 0 white water, > 0 tinted, < 0 rainbow
+      uniform float uTintK; // 0 white water, > 0 tinted
       varying vec2 vUv;
       varying vec4 vDat;
       varying vec3 vWorld;
       varying vec3 vSide;
       varying vec2 vQ;
-      vec3 hue(float h) {
-        return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
-      }
       void main() {
         float x = vUv.x * 2.0 - 1.0;
         float age = vDat.x;
@@ -123,10 +119,7 @@ function material(uniforms) {
         // backlit by the sun it glows
         float glow = pow(max(dot(-toCam, uSunDir), 0.0), 6.0) * smoothstep(-0.05, 0.15, uSunDir.y);
         col += uSunColor * glow * (0.7 + 0.8 * brk);
-        // admin extra: rainbow spray, the colours running along the stream
-        col = mix(col, hue(fract(vUv.y * 0.9 + x * 0.08)) * (0.55 + 0.6 * lit), uRainbow * 0.7);
         if (uTintK > 0.0) col = mix(col, uTint * (0.5 + 0.7 * lit) + uSunColor * glow * 0.3, uTintK);
-        else if (uTintK < 0.0) col = mix(col, hue(fract(vUv.y * 0.9 + x * 0.08)) * (0.6 + 0.6 * lit), 0.72);
         gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -188,11 +181,10 @@ export class JetStream {
     this.mesh.material.dispose();
   }
 
-  // a jet colour: a hex number, 'rainbow', or null for white water
+  // a jet colour: a hex number, or null for white water
   setTint(c) {
     const u = this.mesh.material.uniforms;
-    if (c === 'rainbow') u.uTintK.value = -1;
-    else if (c === null || c === undefined) u.uTintK.value = 0;
+    if (c === null || c === undefined) u.uTintK.value = 0;
     else {
       u.uTint.value.setHex(c);
       u.uTintK.value = 0.62;

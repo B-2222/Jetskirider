@@ -15,7 +15,6 @@ export const FUN = [
   { id: 'lowGrav', name: 'Moon gravity' },
   { id: 'turbo', name: 'Turbo for all' },
   { id: 'mega', name: 'Mega spray' },
-  { id: 'rainbow', name: 'Rainbow spray' },
   { id: 'allHuge', name: 'Every set huge' },
 ];
 

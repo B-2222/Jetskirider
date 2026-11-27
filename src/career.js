@@ -18,6 +18,8 @@ export const CASH_PER_POINT = 0.06;
 // a buoy race pays by medal (bronze, silver, gold)
 export const RACE_PAY = [500, 1000, 2000];
 export const SPRAY_PAY = 60;
+// style items no longer sold: what they cost, paid back
+const REFUNDS = { 'jet:rainbow': 40000, 'tag:rainbow': 25000 };
 
 export class Career {
   constructor() {
@@ -98,7 +100,11 @@ export class Career {
       if (y.done && typeof y.done === 'object') for (const k of Object.keys(y.done)) out.daily.done[k.slice(0, 16)] = true;
     }
     if (d.streak && typeof d.streak === 'object') out.streak = { last: int(d.streak.last, 0, 1e6, 0), n: int(d.streak.n, 0, 1e5, 0) };
-    if (Array.isArray(d.cos)) out.cos = [...new Set(d.cos.filter((k) => typeof k === 'string' && itemOf(...k.split(':'))))];
+    if (Array.isArray(d.cos)) {
+      // items taken out of the shop are refunded
+      for (const [k, v] of Object.entries(REFUNDS)) if (d.cos.includes(k)) out.cash += v;
+      out.cos = [...new Set(d.cos.filter((k) => typeof k === 'string' && itemOf(...k.split(':'))))];
+    }
     if (d.eq && typeof d.eq === 'object') for (const k of ['wrap', 'jet', 'fit', 'tag']) if (typeof d.eq[k] === 'string' && itemOf(k, d.eq[k])) out.eq[k] = d.eq[k];
     if (d.wk && typeof d.wk === 'object') {
       out.wk.w = int(d.wk.w, 0, 1e6, 0);
@@ -299,13 +305,14 @@ export class Career {
   hasCos(kind, id) {
     const it = itemOf(kind, id);
     if (!it) return false;
+    if (it.admin) return !!this.isAdmin; // the admin's own, with the code only
     if (it.lv && (this.data.pr > 0 || this.data.lv >= it.lv)) return true;
     return this.data.cos.includes(kind + ':' + id);
   }
 
   buyCos(kind, id) {
     const it = itemOf(kind, id);
-    if (!it || this.hasCos(kind, id)) return 'owned';
+    if (!it || it.admin || this.hasCos(kind, id)) return 'owned';
     if (!this.spend(it.price)) return 'poor';
     this.data.cos.push(kind + ':' + id);
     this.data.eq[kind] = id;

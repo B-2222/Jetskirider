@@ -82,7 +82,7 @@ class Remote {
     const jetKey = jetI ? jetI.id : '';
     if (jetKey !== this.jetKey) {
       this.jetKey = jetKey;
-      this.jet.setTint(jetI ? (jetI.rainbow ? 'rainbow' : jetI.color) : null);
+      this.jet.setTint(jetI ? jetI.color : null);
     }
     const tag = typeof st.tag === 'string' ? itemOf('tag', st.tag) : null;
     this.tagColor = tag ? tag.color : '';
@@ -940,8 +940,7 @@ export class Multiplayer {
       if (r.tagKey !== key) {
         r.tagKey = key;
         r.tagName.textContent = r.name;
-        r.tagName.className = r.tagColor === 'rainbow' ? 'rainbow' : '';
-        r.tagName.style.color = r.tagColor && r.tagColor !== 'rainbow' ? r.tagColor : '';
+        r.tagName.style.color = r.tagColor || '';
         if (!r.tagLv) {
           r.tagLv = document.createElement('em');
           r.tag.insertBefore(r.tagLv, r.tagName);
