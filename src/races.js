@@ -91,17 +91,20 @@ export class Race {
     this.onEvent = null; // (kind, data)
     const G = course.gates;
     const n = G.length;
+    // open: a point-to-point course (down a river), finishing at the last gate
+    this.open = !!course.open;
     this.gates = G.map((g, i) => {
       // face along the line through the gate (from the gate before to the one after)
-      const a = G[(i - 1 + n) % n];
-      const b = G[(i + 1) % n];
+      const a = this.open ? G[Math.max(0, i - 1)] : G[(i - 1 + n) % n];
+      const b = this.open ? G[Math.min(n - 1, i + 1)] : G[(i + 1) % n];
       let dx = b[0] - a[0];
       let dz = b[1] - a[1];
       const l = Math.hypot(dx, dz) || 1;
       dx /= l;
       dz /= l;
       const sx = -dz, sz = dx;
-      return { x: g[0], z: g[1], dx, dz, lx: g[0] - sx * GATE_W * 0.5, lz: g[1] - sz * GATE_W * 0.5, rx: g[0] + sx * GATE_W * 0.5, rz: g[1] + sz * GATE_W * 0.5 };
+      const w = g[2] || GATE_W; // a narrower gate where the river is narrow
+      return { x: g[0], z: g[1], w, dx, dz, lx: g[0] - sx * w * 0.5, lz: g[1] - sz * w * 0.5, rx: g[0] + sx * w * 0.5, rz: g[1] + sz * w * 0.5 };
     });
 
     // pylons
@@ -132,20 +135,20 @@ export class Race {
         const x = side ? gt.rx : gt.lx;
         const z = side ? gt.rz : gt.lz;
         grp.position.set(x, 0, z);
-        if (i === 0) grp.scale.set(1.15, 1.35, 1.15);
+        if (i === 0 || (this.open && i === n - 1)) grp.scale.set(1.15, 1.35, 1.15);
         this.group.add(grp);
         this.pylons.push({ g: grp, body, cap, gate: i, x, z, tiltX: 0, tiltZ: 0, hit: 0, ph: Math.random() * 6 });
       }
     }
     // a banner between the start pylons
-    {
-      const g0 = this.gates[0];
-      const w = GATE_W;
+    for (const g0 of this.open ? [this.gates[0], this.gates[n - 1]] : [this.gates[0]]) {
+      const w = g0.w;
       const bannerG = new THREE.PlaneGeometry(w, 1.6);
       const tex = checkerTexture();
       tex.repeat.set(w / 1.6, 1);
       const banner = new THREE.Mesh(bannerG, new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.7 }));
-      banner.position.set(g0.x, 5.6, g0.z);
+      const wl = this.world.levelAt ? this.world.levelAt(g0.x, g0.z) : 0;
+      banner.position.set(g0.x, wl + 5.6, g0.z);
       banner.rotation.y = Math.atan2(g0.dx, g0.dz);
       this.banner = banner;
       this.group.add(banner);
@@ -154,7 +157,7 @@ export class Race {
       const poleM = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.6, roughness: 0.3 });
       for (const s of [-1, 1]) {
         const pole = new THREE.Mesh(poleG, poleM);
-        pole.position.set(g0.x - g0.dz * s * w * 0.5, 0, g0.z + g0.dx * s * w * 0.5);
+        pole.position.set(g0.x - g0.dz * s * w * 0.5, wl, g0.z + g0.dx * s * w * 0.5);
         this.group.add(pole);
       }
     }
@@ -291,6 +294,7 @@ export class Race {
   // for the HUD: what the next line is
   stage() {
     const n = this.gates.length;
+    if (this.open) return this.next === 0 ? 'START LINE' : this.next >= n - 1 ? 'FINISH' : 'GATE ' + this.next + ' / ' + (n - 2);
     return this.next === 0 ? 'START LINE' : this.next >= n ? 'FINISH' : 'GATE ' + this.next + ' / ' + (n - 1);
   }
 
@@ -327,7 +331,7 @@ export class Race {
     const target = racing ? this.next % n : -1;
     for (const p of this.pylons) {
       let m;
-      if (p.gate === 0 && target !== 0) m = this.mats.start;
+      if ((p.gate === 0 || (this.open && p.gate === n - 1)) && target !== p.gate) m = this.mats.start;
       else if (p.gate === target) m = this.mats.next;
       else if (racing && p.gate < this.next && p.gate !== 0) m = this.mats.done;
       else m = this.mats.idle;
@@ -375,7 +379,7 @@ export class Race {
     // the circle floats on the water and glows
     {
       const c = this.circle;
-      const sc = this.world.waves.sample(c.x, c.z, time, this._s);
+      const sc = this.world.sample(c.x, c.z, time, this._s);
       this.circleGroup.position.y = sc.h;
       this.ringU.uTime.value += dt;
     }
@@ -384,7 +388,7 @@ export class Race {
       const dx = p.x - phys.px;
       const dz = p.z - phys.pz;
       if (Math.abs(dx) > 500 || Math.abs(dz) > 500) continue;
-      const s = this.world.waves.sample(p.x, p.z, time, this._s);
+      const s = this.world.sample(p.x, p.z, time, this._s);
       p.g.position.y = s.h - 0.25;
       p.tiltX += (-s.nz * 1.1 - p.tiltX) * Math.min(1, dt * 4);
       p.tiltZ += (s.nx * 1.1 - p.tiltZ) * Math.min(1, dt * 4);
@@ -406,7 +410,7 @@ export class Race {
     }
     // the marker bobs over the next gate
     const tg = this.target();
-    const sm = this.world.waves.sample(tg.x, tg.z, time, this._s);
+    const sm = this.world.sample(tg.x, tg.z, time, this._s);
     this.marker.position.set(tg.x, sm.h + 8 + Math.sin(time * 2.4) * 0.6, tg.z);
     this.marker.rotation.y += dt * 1.6;
     const racing = this.state === 'run' || this.state === 'grid';
@@ -426,7 +430,7 @@ export class Race {
     this.t += dt;
     const gi = this.next % n;
     if (this.crossed(this.gates[gi], x0, z0, x1, z1)) {
-      if (this.next >= n) {
+      if (this.next >= n || (this.open && gi === n - 1)) {
         this.state = 'done';
         this.colour();
         const m = this.course.medals; // bronze, silver, gold times

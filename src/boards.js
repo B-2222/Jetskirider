@@ -8,6 +8,7 @@
 
 import { firebase } from './fbapp.js';
 import { dayNow, weekOf } from './daily.js';
+import { cleanWords } from './filter.js';
 
 export const thisWeek = () => weekOf(dayNow());
 const low = (board) => board.startsWith('race-');
@@ -53,7 +54,7 @@ export class Boards {
       const rows = [];
       snap.forEach((ch) => {
         const v = ch.val();
-        if (v && Number.isFinite(v.v) && typeof v.n === 'string') rows.push({ uid: ch.key, name: v.n.replace(/[<>&"'`]/g, '').slice(0, 16), v: v.v });
+        if (v && Number.isFinite(v.v) && typeof v.n === 'string') rows.push({ uid: ch.key, name: cleanWords(v.n.replace(/[<>&"'`]/g, '').slice(0, 16)), v: v.v });
       });
       rows.sort((a, b) => (low(board) ? a.v - b.v : b.v - a.v));
       const me = this.accounts.user && this.accounts.user.uid;

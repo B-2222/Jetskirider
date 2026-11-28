@@ -11,6 +11,8 @@
 
 import { SURF, WAVE_ZONE, SET_SHAPE } from './surf.js';
 import { ISLANDS, SANDBARS, TERRAIN } from './terrain.js';
+import { Gorge } from './gorge.js';
+import { Beach } from './beach.js';
 
 const PI = Math.PI;
 
@@ -130,12 +132,80 @@ export const MAPS = [
     mood: { grey: 0.74, dark: 0.7, sun: 0.26, cloud: 0.95, fog: 1900, exposure: 0.92, water: [0.62, 0.74, 0.76], rain: true },
     race: { name: 'Headland Run', circle: [-150, 300], gates: [[-200, 150], [-600, 320], [-450, 800], [250, 950], [550, 520], [250, 220]], medals: [169, 150, 119] },
   },
+  {
+    id: 'gorge',
+    name: 'THE GORGE',
+    blurb: 'A glacial river deep in a schist canyon. No waves: nine drops and chutes, rock gardens only ankle deep, boulders, and a current that pulls hard over every lip.',
+    waves: 'No waves: drops, chutes and shallows',
+    bonus: { id: 'drop', text: 'Air off the drops pays 2x' },
+    load: 'Carving the canyon…',
+    land: 'gorge', // its own land and water (see gorge.js)
+    river: true,
+    noZone: true,
+    sea: 0,
+    zone: { x: 99999, z: 99999, rIn: 1, rOut: 2, dir: 0 },
+    spots: ['Top lake', 'The bridge', 'Race circle'],
+    spawn: null, // (set from the river below)
+    ramps: [],
+    veg: { palms: 0, canopy: 0, rocks: 0 },
+    mood: { grey: 0.18, dark: 0.95, sun: 0.92, cloud: 0.55, fog: 2600, exposure: 1.0, water: [0.75, 1.0, 1.0] },
+    // down the river, top lake to bottom lake (gates set from the river)
+    race: { name: 'Gorge Run', open: true, circle: null, gates: [], medals: [107, 95, 75] },
+  },
+  {
+    id: 'beach',
+    name: 'BREAKER BEACH',
+    blurb: 'A long white-sand surf beach with dunes, pines and a lifeguard tower. Clean waves roll in all day and stand up on the sandbar: made for jumping.',
+    waves: 'Clean, steady sets that stand up on the bar',
+    bonus: { id: 'wave', text: 'Wave airs and tricks pay 2x' },
+    load: 'Raking the sand…',
+    land: 'beach', // its own beach and dunes (see beach.js)
+    noArch: true,
+    zone: { x: 0, z: 470, rIn: 250, rOut: 520, dir: -Math.PI / 2 },
+    surf: { A0: 2.6, c: 8.5, setN: 5, gap: 7, lull: 9, spawnS: -380, endS: 215, sBreak: 75 },
+    setShape: [0.92, 1.0, 1.08, 1.02, 0.95],
+    spots: ['The beach', 'Out the back', 'Race circle'],
+    zoneSpot: { x: 0, z: 600, yaw: Math.PI / 2 },
+    spawn: { x: 30, z: 330, yaw: -Math.PI / 2 },
+    ramps: [],
+    veg: { palms: 0, canopy: 0, rocks: 0 },
+    race: { name: 'Bar Run', circle: [120, 315], gates: [[-420, 610], [0, 650], [420, 610], [640, 430], [380, 330], [0, 320], [-380, 330], [-640, 430]], medals: [135, 124, 96] },
+  },
 ];
 
 export const mapById = (id) => MAPS.find((m) => m.id === id) || MAPS[0];
 
 // Rewrite the world settings for this map (once, before the world is built).
 export function applyMap(map) {
+  if (map.land === 'gorge') {
+    const g = new Gorge();
+    TERRAIN.land = g;
+    TERRAIN.size = g.size;
+    TERRAIN.res = g.res;
+    map.gorge = g;
+    const at = (s, t = 0) => {
+      const p = g.toWorld(s, t);
+      const a = g.at(s);
+      return { x: p.x, z: p.z, yaw: a.yaw };
+    };
+    map.spawn = at(-10, -20);
+    map.zoneSpot = at(g.bridgeS + 30); // "The bridge"
+    // gates down the river, narrower where it is narrow; the finish is in the bottom lake
+    const S = [40, 190, 330, 450, 560, 660, 760, 860, 960, 1060, 1170, 1270, 1380, 1480, 1590, 1700, 1810, 1920, 2020, g.L - 50];
+    map.race.gates = S.map((s) => {
+      const p = g.toWorld(s, 0);
+      return [p.x, p.z, Math.min(22, Math.max(12, g.width(s) * 1.5))];
+    });
+    const c = g.toWorld(-60, 26);
+    map.race.circle = [c.x, c.z];
+  }
+  if (map.land === 'beach') {
+    const b = new Beach();
+    TERRAIN.land = b;
+    TERRAIN.size = b.size;
+    TERRAIN.res = b.res;
+    map.beach = b;
+  }
   if (map.seed) TERRAIN.seed = map.seed;
   if (map.islands) ISLANDS.splice(0, ISLANDS.length, ...map.islands.map((o) => ({ ...o })));
   if (map.sandbars) SANDBARS.splice(0, SANDBARS.length, ...map.sandbars.map((o) => ({ ...o })));

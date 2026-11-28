@@ -35,6 +35,8 @@ const POOL = [
   { id: 'lake', text: 'Pull 8 slides on Glass Lake', has: ['SLIDE'], map: 'lake', n: 8, pay: 3000 },
   { id: 'storm', text: 'Launch off 5 waves on Storm Coast', has: ['WAVE '], map: 'storm', n: 5, pay: 4000 },
   { id: 'ramps', text: 'Get 5 ramp airs in Palm Bay', ev: 'ramp', map: 'bay', n: 5, pay: 2500 },
+  { id: 'gorge', text: 'Finish the Gorge Run', ev: 'race', map: 'gorge', n: 1, pay: 3500 },
+  { id: 'beach', text: 'Launch off 6 waves at Breaker Beach', has: ['WAVE '], map: 'beach', n: 6, pay: 3500 },
 ];
 
 function rng(seed) {

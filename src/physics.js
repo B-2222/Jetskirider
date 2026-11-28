@@ -88,6 +88,10 @@ export class SkiPhysics {
     this.airDriven = false; // stand-up: the rider threw a rotation this flight
     // admin fun extras: lighter gravity in the air, more pump for everyone
     this.fun = { lowGrav: 0, turbo: 1 };
+    // wave-riding help (0..1): the game turns it up in the wave zone. It keeps
+    // the deck up against the face the water makes and softens the shove of
+    // the whitewater, so a wave can be ridden without being rolled over.
+    this.assist = 0;
     this.wobble = 1; // stand-up: which way, and how much, this flip drifts off square
     this.roll0 = 0;
     this.airLeft = 0; // predicted time to touchdown, s
@@ -397,7 +401,8 @@ export class SkiPhysics {
 
       // planing lift
       // speed through the water (moving water on a breaking wave carries the hull)
-      const wcx = S.ux || 0, wcz = S.uz || 0;
+      const curK = this.assist > 0 ? 1 - 0.5 * this.assist : 1;
+      const wcx = (S.ux || 0) * curK, wcz = (S.uz || 0) * curK;
       const up = (pvx - wcx) * fhx + (pvz - wcz) * fhz;
       if (up > 0.5 && upright > 0.1) {
         const slope = -(S.nx * fhx + S.nz * fhz);
@@ -534,6 +539,25 @@ export class SkiPhysics {
     // bring it back up; only a big, violent hit should put it on its side.
     tb -= Math.sign(roll) * this.Ix * 34 * smoothstep(0.85, 1.3, Math.abs(roll)) * Math.min(1, wet * 3 + groundN * 3) * smoothstep(-0.2, 0.15, uy);
     Tx += fx * tb; Ty += fy * tb; Tz += fz * tb;
+
+    // --- wave-riding help -----------------------------------------------------
+    if (this.assist > 0 && (wet > 0.05 || groundN > 0.05)) {
+      const k = this.assist;
+      const Sa = this._sa || (this._sa = {});
+      this.world.sample(this.px, this.pz, t, Sa);
+      // where the deck should face: the water's surface, leaned toward straight up
+      let tx = (Sa.nx || 0) * 0.5, ty = 1, tz = (Sa.nz || 0) * 0.5;
+      const tl = Math.hypot(tx, ty, tz);
+      tx /= tl; ty /= tl; tz /= tl;
+      // turn the up axis toward it (roll and pitch only), and calm the wobble
+      const ax = uy * tz - uz * ty, ay = uz * tx - ux * tz, az = ux * ty - uy * tx;
+      const off = Math.hypot(ax, ay, az);
+      const gain = 26 * k * (0.35 + 0.65 * smoothstep(0.15, 0.7, off)) * Math.min(1, wet * 2.5 + groundN * 2);
+      const aR = (ax * fx + ay * fy + az * fz) * gain, aP = (ax * rx + ay * ry + az * rz) * gain;
+      const wR = this.wx * fx + this.wy * fy + this.wz * fz, wP = this.wx * rx + this.wy * ry + this.wz * rz;
+      const tR = this.Ix * (aR - 4.5 * k * wR), tP = this.Iz * (aP - 3 * k * wP);
+      Tx += fx * tR + rx * tP; Ty += fy * tR + ry * tP; Tz += fz * tR + rz * tP;
+    }
 
     // A hard carve scrubs speed: the banked hull and the deflected jet turn
     // forward speed into turning, so a full-lock turn tightens as it slows.

@@ -21,6 +21,7 @@ import { JetStream } from './jetstream.js';
 import { itemOf, skiLook, applyFinish, riderLook } from './cosmetics.js';
 import { addFlair } from './flair.js';
 import { DEFAULT_WORLD, cleanWorld, sign, verify } from './world.js';
+import { cleanWords } from './filter.js';
 import { SEA_STATES } from './waves.js';
 
 export const LOBBIES = [
@@ -32,8 +33,9 @@ const SEND_HZ = 15;
 const DELAY = 0.12; // seconds behind real time that remote riders are drawn
 const r2 = (v) => Math.round(v * 100) / 100;
 const r4 = (v) => Math.round(v * 10000) / 10000;
-const cleanChat = (s) => String(s || '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
-const cleanName = (s) => String(s || '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f]/g, '').trim().slice(0, 16);
+// (bad words come out as stars: see filter.js)
+const cleanChat = (s) => cleanWords(String(s || '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90));
+const cleanName = (s) => cleanWords(String(s || '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f]/g, '').trim().slice(0, 16));
 
 const rx0 = (s) => (Number.isFinite(s.rx) ? clamp(s.rx, 1, 2.5) : 1);
 
@@ -588,8 +590,20 @@ export class Multiplayer {
     return c;
   }
 
+  // kicked by the admin: out of the lobbies for ten minutes
+  kickedFor() {
+    let until = 0;
+    try {
+      until = parseInt(localStorage.getItem('jetski-kick') || '0', 10) || 0;
+    } catch {
+      /* ignore */
+    }
+    return Math.max(0, until - Date.now());
+  }
+
   async joinLobby(id) {
     if (!this.room || this.joining || this.lobbyId === id) return;
+    if (this.kickedFor() > 0) return 'kicked';
     const c = this.counts();
     if (c[id] >= MAX_PER_LOBBY) return 'full';
     this.joining = true;
@@ -677,10 +691,17 @@ export class Multiplayer {
   }
 
   // Send a chat line to everyone online. Returns why not, if it was not sent.
+  // the admin muted this rider (by their label this visit, or their name)
+  isMuted(peer, name) {
+    const now = Date.now() + this.clockOffset;
+    return (this.world.mute || []).some((m) => m.u > now && ((peer && m.p === peer) || (name && m.n === name)));
+  }
+
   sendChat(text) {
     const t = cleanChat(text);
     if (!t) return 'empty';
     if (!this.room || this.status !== 'ready') return 'offline';
+    if (this.isMuted(this.generalId(), this.nick)) return 'muted';
     const now = Date.now();
     this.chatTimes = this.chatTimes.filter((x) => now - x < 10000);
     if (this.chatTimes.length >= 5 || (this.chatTimes.length && now - this.chatTimes[this.chatTimes.length - 1] < 900)) return 'slow';
@@ -701,7 +722,7 @@ export class Multiplayer {
       if (p.sameTab || p.isMe) continue;
       const pr = p.presence || {};
       const name = cleanName(pr.n) || this.profileName(p.by) || 'Rider';
-      const list = Array.isArray(pr.chat) ? pr.chat.slice(-3) : [];
+      const list = Array.isArray(pr.chat) && !this.isMuted(p.peer, name) ? pr.chat.slice(-3) : [];
       const seen = this.chatSeen.get(p.peer);
       let top = seen === undefined ? -1 : seen;
       for (const c of list) {
@@ -728,7 +749,7 @@ export class Multiplayer {
     let bestV = this.world.v;
     for (const p of this.room.peers()) {
       const w = p.presence && p.presence.ws;
-      if (!w || typeof w.j !== 'string' || typeof w.g !== 'string' || w.j.length > 900) continue;
+      if (!w || typeof w.j !== 'string' || typeof w.g !== 'string' || w.j.length > 3000) continue;
       let o;
       try {
         o = JSON.parse(w.j);
@@ -786,6 +807,49 @@ export class Multiplayer {
     return true;
   }
 
+  // Admin only: send one rider out of the lobbies for ten minutes. Same
+  // signed channel as gifts.
+  async sendKick(peer) {
+    if (!this.adminKey || !this.room || !peer) return false;
+    const j = JSON.stringify({ to: peer, k: 'kick', i: Math.random().toString(36).slice(2, 9), t: Date.now() });
+    const g = await sign(this.adminKey, j);
+    await this.room.presence({ gf: { j, g } }).catch(() => {});
+    return true;
+  }
+
+  // Admin only: mute (or unmute) a rider's chat for everyone
+  async setMute(peer, name, minutes) {
+    const now = Date.now() + this.clockOffset;
+    const keep = (this.world.mute || []).filter((m) => m.u > now && m.p !== peer && m.n !== name);
+    if (minutes > 0) keep.push({ p: peer, n: String(name || '').slice(0, 16), u: now + minutes * 60000 });
+    return this.setWorld({ mute: keep.slice(-20) });
+  }
+
+  // Anyone: report a rider to the admin. It rides in your presence (the
+  // admin's game lists it live) and is kept in the database for the admin.
+  report(peer, name, why) {
+    if (!this.room || this.status !== 'ready') return 'offline';
+    const now = Date.now();
+    if (now - (this.reportT || 0) < 60000) return 'slow';
+    this.reportT = now;
+    const r = { w: String(peer || '').slice(0, 40), n: cleanName(name), y: String(why || 'other').slice(0, 12), t: now, i: Math.random().toString(36).slice(2, 9) };
+    this.room.presence({ rp: r }).catch(() => {});
+    if (this.onReportOut) this.onReportOut({ ...r, by: this.nick });
+    return null;
+  }
+
+  // (admin) reports in everyone's presence, newest first
+  reports() {
+    if (!this.room) return [];
+    const out = [];
+    for (const p of this.room.peers()) {
+      const r = p.presence && p.presence.rp;
+      if (!r || typeof r.n !== 'string' || !Number.isFinite(r.t) || Date.now() - r.t > 3600000) continue;
+      out.push({ by: cleanName(p.presence.n) || 'Rider', who: cleanName(r.n), why: String(r.y || '').slice(0, 12), t: r.t, w: typeof r.w === 'string' ? r.w : '' });
+    }
+    return out.sort((a, b) => b.t - a.t).slice(0, 20);
+  }
+
   readGifts() {
     if (!this.room || !this.onGift) return;
     const me = this.generalId();
@@ -801,7 +865,21 @@ export class Multiplayer {
         continue;
       }
       seen.add(gf.g);
-      if (!o || o.to !== me || !Number.isFinite(o.a) || !o.a || Math.abs(o.a) > 1000000 || Math.abs(Date.now() - o.t) > 600000) continue;
+      if (!o || o.to !== me || Math.abs(Date.now() - o.t) > 600000) continue;
+      if (o.k === 'kick') {
+        verify(gf.j, gf.g).then((ok) => {
+          if (!ok) return;
+          try {
+            localStorage.setItem('jetski-kick', String(Date.now() + 600000));
+          } catch {
+            /* ignore */
+          }
+          this.leaveLobby();
+          if (this.onKick) this.onKick();
+        });
+        continue;
+      }
+      if (!Number.isFinite(o.a) || !o.a || Math.abs(o.a) > 1000000) continue;
       verify(gf.j, gf.g).then((ok) => {
         if (ok && this.onGift) this.onGift(Math.round(o.a));
       });

@@ -19,7 +19,7 @@ export const MISSIONS = [
   { id: 'combo4', text: 'Build a x4 combo', pay: 1500, ev: 'combo', n: 4 },
   { id: 'backflip', text: 'Land a backflip (stand-up)', pay: 1500, has: 'BACKFLIP' },
   { id: 'garage3', text: 'Own 3 skis', pay: 1500, ev: 'owned', n: 3 },
-  { id: 'maps', text: 'Ride every map', pay: 2000, ev: 'maps', n: 4 },
+  { id: 'maps', text: 'Ride 4 different maps', pay: 2000, ev: 'maps', n: 4 },
   { id: 'score10k', text: 'Reach a score of 10,000', pay: 2000, ev: 'score', n: 10000 },
   { id: 'air4', text: 'Get 4 seconds of air in one jump', pay: 2500, ev: 'air', n: 4 },
   { id: 'gold', text: 'Win a gold medal in a buoy race', pay: 3000, ev: 'race', n: 2 },
@@ -31,7 +31,7 @@ export const MISSIONS = [
   { id: 'score50k', text: 'Reach a score of 50,000', pay: 5000, ev: 'score', n: 50000 },
   { id: 'double', text: 'Land a double flip (stand-up)', pay: 6000, has: 'DOUBLE ' },
   { id: 'garage8', text: 'Own 8 skis', pay: 10000, ev: 'owned', n: 8 },
-  { id: 'gold4', text: 'Win gold on every map', pay: 15000, ev: 'golds', n: 4 },
+  { id: 'gold4', text: 'Win gold on 4 maps', pay: 15000, ev: 'golds', n: 4 },
 ];
 
 // ev: what happened; v: its value (a trick label, a speed in km/h, a count...)

@@ -80,7 +80,11 @@
     </div>
 
     <div class="hint" id="hint"></div>
+    <!-- the admin watching another rider -->
+    <div class="spec-bar" id="specBar" hidden><span class="lbl">WATCHING</span><b id="specName">Rider</b><button id="specPrev" aria-label="Previous rider">‹</button><button id="specNext" aria-label="Next rider">›</button><button id="specStop">STOP</button></div>
   </div>
+  <!-- a message from the admin, across everyone's screen -->
+  <div class="adm-banner" id="admBannerShow" hidden role="status"><b>ADMIN</b><span id="admBannerMsg"></span></div>
 
   <!-- ===================== touch controls ===================== -->
   <div id="touch" hidden>
@@ -167,6 +171,7 @@
           <div class="row"><span class="lbl">ONLINE</span><div class="seg" id="mpLobbies"><button id="mpL1" disabled>Lobby 1</button><button id="mpL2" disabled>Lobby 2</button></div></div>
           <p class="mp-status" id="mpStatus">Connecting…</p>
           <p class="mp-status mp-stats" id="mpStats"></p>
+          <div class="row report"><span class="lbl">REPORT</span><select id="repWho" aria-label="Who"><option value="">Nobody online</option></select><select id="repWhy" aria-label="Why"><option value="chat">Rude chat</option><option value="name">Bad name</option><option value="cheat">Cheating</option><option value="other">Something else</option></select><button id="btnReport">SEND</button></div>
         </section>
         <section class="admin" aria-label="Admin">
           <div class="row" id="adminLock"><span class="lbl">ADMIN</span><input id="adminCode" type="password" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Admin code"><button id="adminGo">UNLOCK</button></div>
@@ -176,6 +181,10 @@
           <div class="row"><span class="lbl">SKIS</span><div class="seg wrap" id="admSkis"></div><span class="world-val dim">Your own: only the admin can ride them</span></div>
           <div class="row"><span class="lbl">WRAP</span><div class="seg"><button id="admWrap">BARSA EDITION: OFF</button></div><span class="world-val dim">Your own wrap: only the admin can wear it</span></div>
             <div class="row gift"><span class="lbl">GIFT</span><select id="admGiftTo"><option value="">Nobody online</option></select><input id="admGiftAmt" type="number" min="-1000000" max="1000000" step="100" value="1000" aria-label="Amount (minus takes cash away)" title="Minus takes cash away"><button id="admGift">GIVE</button></div>
+            <div class="row"><span class="lbl">BANNER</span><input id="admBannerText" maxlength="140" autocomplete="off" spellcheck="true" placeholder="A message across everyone's screen"><button id="admBanner">SEND</button></div>
+            <div class="row gift"><span class="lbl">RIDER</span><select id="admModTo"><option value="">Nobody online</option></select><button id="admKick" title="Out of the lobbies for 10 minutes">KICK</button><button id="admMute" title="Nobody sees their chat for 10 minutes">MUTE</button><button id="admUnmute">UNMUTE</button></div>
+            <div class="row gift"><span class="lbl">WATCH</span><select id="admSpecTo"><option value="">Nobody in your lobby</option></select><button id="admSpec">SPECTATE</button></div>
+            <div class="row adm-rep"><span class="lbl">REPORTS</span><ol class="adm-reports" id="admReports"><li class="empty">No reports right now</li></ol></div>
             <div class="row"><span class="lbl">TIME</span><input type="range" id="admTime" min="0" max="24" step="0.25"><span class="world-val" id="admTimeLbl">12:00</span></div>
             <div class="row"><span class="lbl">CLOCK</span><div class="seg" id="admClock"><button data-s="auto">Normal day</button><button data-s="0">Freeze</button><button data-s="1">Run</button><button data-s="12">Fast</button></div></div>
             <div class="row"><span class="lbl">WATER</span><div class="seg" id="admSea"></div></div>

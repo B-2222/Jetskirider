@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { WAVES_GLSL } from './waves.js';
 import { SURF_GLSL } from './surf.js';
 import { SKY_GLSL, Sky } from './sky.js';
-import { WORLD_SIZE } from './terrain.js';
+import { TERRAIN } from './terrain.js';
 
 const FOAM_SIZE = 300; // metres covered by the foam map
 const FOAM_RES = 1024;
@@ -272,7 +272,7 @@ export class Ocean {
       uTime: { value: 0 },
       uCenter: { value: new THREE.Vector2() },
       uHeightMap: { value: heightTex },
-      uWorldSize: { value: WORLD_SIZE },
+      uWorldSize: { value: TERRAIN.size },
       uNormalMap: { value: normalTex },
       uFoamMap: { value: null },
       uFoamCenter: { value: foam.center },
@@ -287,6 +287,7 @@ export class Ocean {
       uSkiFwd: { value: new THREE.Vector2(1, 0) },
       uSkiDim: { value: new THREE.Vector2(1.7, 0.75) },
       uFogDist: { value: 6500 },
+      uShoreW: { value: 1.4 }, // how far out the shore wash reaches (in depth)
     };
     Sky.link(u, sky.uniforms);
     this.uniforms = u;
@@ -326,7 +327,7 @@ export class Ocean {
         uniform vec2 uFoamCenter;
         uniform float uFoamSize;
         uniform vec3 uDeep, uShallow, uSand;
-        uniform float uAmbient, uRipple, uCaps, uFogDist;
+        uniform float uAmbient, uRipple, uCaps, uFogDist, uShoreW;
         uniform vec3 uSkiPos;
         uniform vec2 uSkiFwd, uSkiDim;
         varying vec3 vWorld;
@@ -428,7 +429,7 @@ export class Ocean {
           // whitewater rolling behind the break
           foam = max(foam, clamp((sFoam * 1.6 - lace * 0.85) * 2.4, 0.0, 1.0));
           // shoreline wash
-          float shore = 1.0 - smoothstep(0.0, 1.4, depth);
+          float shore = 1.0 - smoothstep(0.0, uShoreW, depth);
           float lap = 0.5 + 0.5 * sin(depth * 5.0 - t * 1.3 + lace * 5.0);
           foam = max(foam, clamp((shore * (1.1 + lap * 0.7) - lace * 0.95) * 2.4, 0.0, 1.0) * step(0.001, depth));
           // whitecaps on steep crests

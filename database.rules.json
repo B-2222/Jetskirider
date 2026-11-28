@@ -25,13 +25,27 @@
         "$board": {
           ".indexOn": ["v"],
           "$uid": {
-            ".write": "auth != null && auth.uid === $uid && $week.matches(/^w[0-9]{4,6}$/) && $board.matches(/^(tricks|race-(bay|reef|lake|storm))$/)",
+            ".write": "auth != null && auth.uid === $uid && $week.matches(/^w[0-9]{4,6}$/) && $board.matches(/^(tricks|race-(bay|reef|lake|storm|gorge|beach))$/)",
             ".validate": "newData.hasChildren(['n', 'v', 't'])",
             "n": { ".validate": "newData.isString() && newData.val().length <= 16" },
             "v": { ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() < 10000000" },
             "t": { ".validate": "newData.val() === now" },
             "$other": { ".validate": false }
           }
+        }
+      }
+    },
+    "reports": {
+      ".read": false,
+      "$day": {
+        "$id": {
+          ".write": "!data.exists() && $day.matches(/^d[0-9]{8}$/) && $id.matches(/^[a-z0-9]{6,12}$/)",
+          ".validate": "newData.hasChildren(['by', 'who', 'why', 't'])",
+          "by": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "who": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "why": { ".validate": "newData.isString() && newData.val().length <= 12" },
+          "t": { ".validate": "newData.val() === now" },
+          "$other": { ".validate": false }
         }
       }
     },

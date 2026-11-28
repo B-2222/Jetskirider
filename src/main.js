@@ -22,6 +22,9 @@ import { Career, START_SKI, CASH_PER_POINT, RACE_PAY, SPRAY_PAY, money } from '.
 import { Accounts, authError } from './accounts.js';
 import { SHOP, itemOf, skiLook, applyFinish, riderLook } from './cosmetics.js';
 import { addFlair } from './flair.js';
+import { GorgeScene } from './gorgescene.js';
+import { BeachScene } from './beachscene.js';
+import { firebase } from './fbapp.js';
 import { MAX_LEVEL, xpFor, trickXp, titleFor, PRESTIGE_BONUS } from './levels.js';
 import { dayNow, msToNextDay, SWEEP_PAY } from './daily.js';
 import { Boards, thisWeek } from './boards.js';
@@ -115,6 +118,8 @@ const PB_LABEL = { A: 'A', B: 'B', X: 'X', Y: 'Y', LB: 'LB', RB: 'RB', LT: 'LT',
 const pb = (k) => `<span class="pb pb-${k}">${PB_LABEL[k]}</span>`;
 // wave zone entry: downwave of the swell, pointing into it
 const ZONE_IN = (() => {
+  // (a map with no wave zone has its own second spot instead)
+  if (MAP.zoneSpot) return { ...MAP.zoneSpot, hx: Math.cos(MAP.zoneSpot.yaw), hz: -Math.sin(MAP.zoneSpot.yaw) };
   const hx = -Math.cos(WAVE_ZONE.dir);
   const hz = -Math.sin(WAVE_ZONE.dir);
   const r = WAVE_ZONE.rOut + 60;
@@ -183,7 +188,7 @@ class Game {
     for (const r of this.world.ramps) this.scene.add(buildRampMesh(this.world, r));
     this.buoys = new Buoys(this.world, this.makeBuoyList());
     this.scene.add(this.buoys.group);
-    this.scene.add(buildZoneArch(ZONE_IN.x + ZONE_IN.hx * 30, ZONE_IN.z + ZONE_IN.hz * 30, ZONE_IN.yaw));
+    if (!MAP.noZone && !MAP.noArch) this.scene.add(buildZoneArch(ZONE_IN.x + ZONE_IN.hx * 30, ZONE_IN.z + ZONE_IN.hz * 30, ZONE_IN.yaw));
     // the map's buoy race
     this.race = new Race(this.world, MAP.race);
     this.race.onEvent = (kind, d) => this.onRace(kind, d);
@@ -207,6 +212,17 @@ class Game {
     this.breakers = new Breakers({ waves: this.waves, ocean: this.ocean, sky: this.sky, spray: this.spray, foam: this.foam });
     this.scene.add(this.breakers.mesh);
     this.breakers.camPos = this.camera.position;
+    // THE GORGE: its canyon, river, rocks and bridge (and no sea)
+    if (MAP.beach) {
+      this.beachScene = new BeachScene({ beach: MAP.beach, terrain: this.terrain, scene: this.scene });
+      // a gentle beach: the wash is a thin line of foam, not a wide band
+      this.ocean.uniforms.uShoreW.value = 0.35;
+    }
+    if (MAP.gorge) {
+      this.ocean.mesh.visible = false;
+      this.breakers.mesh.visible = false;
+      this.gorge = new GorgeScene({ gorge: MAP.gorge, terrain: this.terrain, scene: this.scene, sky: this.sky, normalTex: this.normalTex, noiseTex: this.noiseTex, foam: this.foam, spray: this.spray });
+    }
 
     // --- player ------------------------------------------------------------
     // your progress: cash, skis owned, kits, missions, race times
@@ -298,6 +314,22 @@ class Game {
     this.applySea(true);
     this.applyTime(true);
     this.mp.onWorld = (w) => this.applyWorld(w);
+    this.mp.onKick = () => {
+      this.toast('REMOVED BY THE ADMIN', 'You are out of the lobbies for 10 minutes. You can still ride solo.', 0);
+      this.refreshMp();
+    };
+    // reports also go to the database, where the admin can read them later
+    this.mp.onReportOut = async (r) => {
+      try {
+        const F = await firebase();
+        if (!F) return;
+        const d = new Date();
+        const day = 'd' + d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0');
+        await F.fb.set(F.fb.ref(F.db, 'reports/' + day + '/' + r.i), { by: String(r.by || 'Rider').slice(0, 16), who: r.n.slice(0, 16), why: r.y.slice(0, 12), t: F.fb.serverTimestamp() });
+      } catch (e) {
+        console.warn('jetski: report not stored', e);
+      }
+    };
     this.mp.onGift = (amount) => {
       if (amount > 0) {
         this.career.earn(amount);
@@ -351,9 +383,10 @@ class Game {
       const z = 120 + Math.sin(a) * rad;
       if (this.terrain.heightAt(x, z) < -2) list.push({ x, z, color: i % 2 ? red : yel });
     }
-    // big orange markers around the wave zone
-    for (let i = 0; i < 18; i++) {
+    // big orange markers around the wave zone (out on the water)
+    for (let i = 0; i < (MAP.noZone ? 0 : 18); i++) {
       const a = (i / 18) * Math.PI * 2;
+      if (this.world.depthAt(WAVE_ZONE.x + Math.cos(a) * (WAVE_ZONE.rOut + 15), WAVE_ZONE.z + Math.sin(a) * (WAVE_ZONE.rOut + 15)) < 3) continue;
       list.push({ x: WAVE_ZONE.x + Math.cos(a) * (WAVE_ZONE.rOut + 15), z: WAVE_ZONE.z + Math.sin(a) * (WAVE_ZONE.rOut + 15), color: 0xff6a13, scale: 1.7 });
     }
     return list;
@@ -466,7 +499,7 @@ class Game {
     if (kind === 'note' || !(pts > 0)) return null;
     const b = MAP.bonus.id;
     let mult = 1;
-    if ((b === 'ramp' && info.ramp) || (b === 'wave' && info.wave) || (b === 'flat' && (info.water || info.flat))) mult = 2;
+    if ((b === 'ramp' && info.ramp) || (b === 'wave' && info.wave) || (b === 'flat' && (info.water || info.flat)) || (b === 'drop' && info.air)) mult = 2;
     else if (b === 'all') mult = 1.5;
     const cash = this.career.earn(pts * CASH_PER_POINT * mult * this.starMult() + (info.spray ? SPRAY_PAY * this.mapMult() : 0));
     this.gainXp(trickXp(pts));
@@ -712,7 +745,7 @@ class Game {
     this.raceField = new Map(); // peer -> { name, rr } of everyone racing with me
     this.countShown = 0;
     this.input.rumble(0.3, 0.5, 120);
-    this.showHint('<b>' + MAP.race.name + '</b>' + (n > 1 ? ' against ' + (n - 1) + (n === 2 ? ' mate' : ' mates') : '') + '. Follow the green arrow: the start line, every gate, then back to the finish.', 5);
+    this.showHint('<b>' + MAP.race.name + '</b>' + (n > 1 ? ' against ' + (n - 1) + (n === 2 ? ' mate' : ' mates') : '') + (MAP.race.open ? '. Follow the green arrow: the start line, then every gate down the river to the finish.' : '. Follow the green arrow: the start line, every gate, then back to the finish.'), 5);
   }
 
   // back to free riding (the results stay up a moment)
@@ -926,6 +959,7 @@ class Game {
     }
     this.sky.setTime(tod);
     this.ocean.setTime(tod);
+    if (this.gorge) this.gorge.setAmbient(tod.ambient);
     this.spray.setLight(tod);
     this.renderer.toneMappingExposure = tod.exposure;
     this.sun.color.setRGB(tod.sun[0], tod.sun[1], tod.sun[2]);
@@ -973,7 +1007,86 @@ class Game {
       this.lastSummon = w.summon;
     }
     if (this.lastSummon === undefined) this.lastSummon = w.summon;
+    // the admin's banner: shown once, if it is fresh
+    const b = w.banner;
+    if (b && b.i !== this.bannerSeen) {
+      this.bannerSeen = b.i;
+      if (Date.now() + this.mp.clockOffset - b.t < 60000) this.showAdminBanner(b.m);
+    }
     this.refreshWorldUi();
+  }
+
+  showAdminBanner(m) {
+    $('admBannerMsg').textContent = m;
+    const el = $('admBannerShow');
+    el.hidden = false;
+    // restart the slide-in
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+    clearTimeout(this.bannerTimer);
+    this.bannerTimer = setTimeout(() => (el.hidden = true), 10000);
+  }
+
+  // ------------------------------------------------------------- spectate
+  // The admin watches another rider in their lobby (same map). Your own ski
+  // waits where it is.
+  startSpectate(peer) {
+    const r = this.mp.remotes.get(peer);
+    if (!r || !r.model || (r.state.m || 'bay') !== this.mapId) return false;
+    this.watching = peer;
+    if (this.state !== 'ride') this.ride();
+    $('specBar').hidden = false;
+    $('specName').textContent = r.name;
+    this.cam.specPos = null;
+    return true;
+  }
+
+  stopSpectate() {
+    if (!this.watching) return;
+    this.watching = null;
+    $('specBar').hidden = true;
+    this.snapCamera();
+  }
+
+  stepSpectate(d) {
+    const list = [...this.mp.remotes.entries()].filter(([, r]) => r.model && (r.state ? r.state.m || 'bay' : '') === this.mapId).map(([k]) => k);
+    if (!list.length) return this.stopSpectate();
+    const i = list.indexOf(this.watching);
+    this.startSpectate(list[(i + d + list.length) % list.length]);
+  }
+
+  // chase camera behind the rider being watched; false if they are gone
+  spectateCamera(dt) {
+    const r = this.mp.remotes.get(this.watching);
+    if (!r || !r.group.visible) {
+      this.stopSpectate();
+      this.showHint('They left, so you are back on your ski.', 2);
+      return false;
+    }
+    const c = this.cam;
+    const fwd = this._v2 || (this._v2 = new THREE.Vector3());
+    fwd.set(1, 0, 0).applyQuaternion(r.quat);
+    fwd.y = 0;
+    if (fwd.lengthSq() < 1e-4) fwd.set(1, 0, 0);
+    fwd.normalize();
+    const des = this._v3 || (this._v3 = new THREE.Vector3());
+    des.copy(r.pos).addScaledVector(fwd, -7.5);
+    des.y = r.pos.y + 2.8;
+    if (!c.specPos) c.specPos = des.clone();
+    c.specPos.lerp(des, 1 - Math.exp(-dt * 4));
+    const cam = this.camera;
+    cam.position.copy(c.specPos);
+    const wh = this.world.waterHeight(cam.position.x, cam.position.z, this.phys.time);
+    if (cam.position.y < wh + 0.6) cam.position.y = wh + 0.6;
+    cam.up.set(0, 1, 0);
+    cam.lookAt(r.pos.x + fwd.x * 3, r.pos.y + 0.9, r.pos.z + fwd.z * 3);
+    if (Math.abs(cam.fov - 62) > 0.01) {
+      cam.fov = 62;
+      cam.updateProjectionMatrix();
+    }
+    if ($('specName').textContent !== r.name) $('specName').textContent = r.name;
+    return true;
   }
 
   refreshWorldUi() {
@@ -1108,6 +1221,47 @@ class Game {
       // one at a time, so each gift reaches its rider
       setTimeout(() => ($('admGift').disabled = false), 3000);
     });
+    // a message across everyone's screen
+    $('admBannerText').addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') $('admBanner').click();
+    });
+    $('admBanner').addEventListener('click', () => {
+      const m = $('admBannerText').value.trim().slice(0, 140);
+      if (!m) return say('type a message first.');
+      mp.setWorld({ banner: { m, t: Date.now() + mp.clockOffset, i: Math.random().toString(36).slice(2, 9) } });
+      $('admBannerText').value = '';
+      say('banner: "' + m + '"');
+    });
+    // moderation: kick, mute
+    const modPick = () => {
+      const sel = $('admModTo');
+      return sel.value ? { peer: sel.value, name: (sel.options[sel.selectedIndex].dataset.name || '').slice(0, 16) } : null;
+    };
+    $('admKick').addEventListener('click', async () => {
+      const r = modPick();
+      if (!r) return say('pick a rider first.');
+      const ok = await mp.sendKick(r.peer);
+      $('admStatus').textContent = ok ? 'Kicked ' + r.name + ' out of the lobbies for 10 minutes.' : 'Not online, so nothing sent.';
+    });
+    $('admMute').addEventListener('click', async () => {
+      const r = modPick();
+      if (!r) return say('pick a rider first.');
+      await mp.setMute(r.peer, r.name, 10);
+      $('admStatus').textContent = 'Muted ' + r.name + ' for 10 minutes: nobody sees their chat.';
+    });
+    $('admUnmute').addEventListener('click', async () => {
+      const r = modPick();
+      if (!r) return say('pick a rider first.');
+      await mp.setMute(r.peer, r.name, 0);
+      $('admStatus').textContent = r.name + ' can chat again.';
+    });
+    // spectate a rider in your lobby
+    $('admSpec').addEventListener('click', () => {
+      const peer = $('admSpecTo').value;
+      if (!peer) return ($('admStatus').textContent = 'Join a lobby with riders in it to watch them.');
+      if (!this.startSpectate(peer)) $('admStatus').textContent = 'They are not on this map right now.';
+    });
     // the admin's own skis, one tap away
     for (const sk of SKIS.filter((x) => x.admin)) {
       const b = document.createElement('button');
@@ -1223,7 +1377,7 @@ class Game {
       el._get = get;
     };
     this.spotIndex = 0;
-    seg($('segSpot'), [{ name: 'Lagoon' }, { name: 'Wave zone' }, { name: 'Race circle' }], () => this.spotIndex, (i) => {
+    seg($('segSpot'), (MAP.spots || ['Lagoon', 'Wave zone', 'Race circle']).map((name) => ({ name })), () => this.spotIndex, (i) => {
       this.spotIndex = i;
       this.teleport(['lagoon', 'zone', 'circle'][i]);
     });
@@ -1237,6 +1391,20 @@ class Game {
     this.vtsBars = [...bars.children];
 
     $('btnRide').addEventListener('click', () => this.rideClick());
+    $('specStop').addEventListener('click', () => this.stopSpectate());
+    $('specPrev').addEventListener('click', () => this.stepSpectate(-1));
+    $('specNext').addEventListener('click', () => this.stepSpectate(1));
+    $('btnReport').addEventListener('click', () => {
+      const sel = $('repWho');
+      if (!sel.value) return this.showHint('Pick who to report.', 2);
+      const r = this.mp.report(sel.value, sel.options[sel.selectedIndex].dataset.name || '', $('repWhy').value);
+      if (r === 'slow') this.showHint('One report a minute, thanks.', 2);
+      else if (r === 'offline') this.showHint('Reports work when you are online.', 2);
+      else {
+        this.showHint('Thanks. The admin will see your report.', 2.5);
+        $('mpStatus').textContent = 'Report sent. Thanks for keeping it friendly.';
+      }
+    });
     if (window.ResizeObserver) {
       new ResizeObserver(() => $('menu').style.setProperty('--side-h', Math.ceil($('menuSide').offsetHeight) + 'px')).observe($('menuSide'));
     }
@@ -1253,6 +1421,7 @@ class Game {
         const r = this.mp.sendChat(e.target.value);
         if (r === 'slow') return this.showHint('Easy, one message at a time.', 1.4);
         if (r === 'offline') this.showHint('Chat works when you are online.', 2);
+        if (r === 'muted') this.showHint('The admin has muted your chat for a bit.', 2.5);
         e.target.value = '';
         this.closeChat();
       } else if (e.key === 'Escape') this.closeChat();
@@ -1462,6 +1631,23 @@ class Game {
     const online = mp.room && mp.status === 'ready' ? mp.room.peers().filter((p) => p.kind === 'viewer').length : 0;
     const t = online ? online.toLocaleString() + ' online now' : '';
     if ($('mpStats').textContent !== t) $('mpStats').textContent = t;
+    {
+      const sel = $('repWho');
+      const list = mp.online();
+      const key = list.map((o) => o.peer + o.name).join('|');
+      if (sel._key !== key && document.activeElement !== sel) {
+        sel._key = key;
+        const keep = sel.value;
+        sel.textContent = '';
+        if (!list.length) sel.append(new Option('Nobody online', ''));
+        for (const o of list) {
+          const op = new Option(o.name, o.peer);
+          op.dataset.name = o.name;
+          sel.append(op);
+        }
+        if (list.some((o) => o.peer === keep)) sel.value = keep;
+      }
+    }
     if (mp.adminKey) {
       const sel = $('admGiftTo');
       const list = mp.online();
@@ -1473,6 +1659,56 @@ class Game {
         if (!list.length) sel.append(new Option('Nobody online', ''));
         for (const o of list) sel.append(new Option(o.name + (o.lobby ? ' · ' + o.lobby.replace('lobby-', 'Lobby ') : ''), o.peer));
         if (list.some((o) => o.peer === keep)) sel.value = keep;
+      }
+      // moderation list: the same riders
+      const ms = $('admModTo');
+      if (ms._key !== key && document.activeElement !== ms) {
+        ms._key = key;
+        const keep = ms.value;
+        ms.textContent = '';
+        if (!list.length) ms.append(new Option('Nobody online', ''));
+        for (const o of list) {
+          const op = new Option(o.name + (mp.isMuted(o.peer, o.name) ? ' (muted)' : '') + (o.lobby ? ' · ' + o.lobby.replace('lobby-', 'Lobby ') : ''), o.peer);
+          op.dataset.name = o.name;
+          ms.append(op);
+        }
+        if (list.some((o) => o.peer === keep)) ms.value = keep;
+      }
+      // riders in your lobby on this map, to watch
+      const ss = $('admSpecTo');
+      const here = [...mp.remotes.entries()].filter(([, r]) => r.model && (r.state ? r.state.m || 'bay' : '') === this.mapId);
+      const skey = here.map(([k, r]) => k + r.name).join('|');
+      if (ss._key !== skey && document.activeElement !== ss) {
+        ss._key = skey;
+        const keep = ss.value;
+        ss.textContent = '';
+        if (!here.length) ss.append(new Option('Nobody in your lobby', ''));
+        for (const [k, r] of here) ss.append(new Option(r.name, k));
+        if (here.some(([k]) => k === keep)) ss.value = keep;
+      }
+      // reports from riders (live while they are online)
+      const reps = mp.reports();
+      const rkey = reps.map((r) => r.t).join('|');
+      const ol = $('admReports');
+      if (ol._key !== rkey) {
+        ol._key = rkey;
+        ol.textContent = '';
+        const why = { chat: 'rude chat', name: 'bad name', cheat: 'cheating', other: 'something else' };
+        if (!reps.length) {
+          const li = document.createElement('li');
+          li.className = 'empty';
+          li.textContent = 'No reports right now';
+          ol.append(li);
+        }
+        for (const r of reps) {
+          const li = document.createElement('li');
+          const a = document.createElement('span');
+          a.textContent = r.who + ': ' + (why[r.why] || r.why);
+          const b = document.createElement('small');
+          b.textContent = 'by ' + r.by + ' · ' + Math.max(1, Math.round((Date.now() - r.t) / 60000)) + ' min ago';
+          li.append(a, b);
+          ol.append(li);
+        }
       }
       const n = this.accounts.riders;
       const a = (n === undefined ? 'Counting…' : n < 0 ? 'Not available here' : n.toLocaleString() + (n === 1 ? ' rider has' : ' riders have') + ' played') + ' · ' + online + ' online now';
@@ -1810,9 +2046,10 @@ class Game {
     const p = this.phys;
     const b = this.breakers;
     const k = b.lipHit;
-    p.vx += b.lipDir.x * 10 * k * dt;
-    p.vz += b.lipDir.z * 10 * k * dt;
-    p.vy -= 7 * k * dt;
+    const soft = 1 - 0.5 * (p.assist || 0);
+    p.vx += b.lipDir.x * 10 * k * soft * dt;
+    p.vz += b.lipDir.z * 10 * k * soft * dt;
+    p.vy -= 7 * k * soft * dt;
     const now = performance.now();
     if (now - (this.lipT || -1e9) > 450) {
       this.lipT = now;
@@ -1830,7 +2067,7 @@ class Game {
       this.input.rumble(0.6 + 0.4 * Math.min(1, k), 0.7, 260);
       this.audio.splash(Math.min(1, 0.4 + 0.6 * k));
     }
-    if (b.lipLand && k > 0.55 && p.tele.speed < 11) this.startWipeout('SMASHED BY THE LIP');
+    if (b.lipLand && k > 0.55 + 0.3 * (p.assist || 0) && p.tele.speed < 11 - 3 * (p.assist || 0)) this.startWipeout('SMASHED BY THE LIP');
   }
 
   // Online: someone's jet catching you (water all over your lens), and yours
@@ -2147,7 +2384,13 @@ class Game {
     let x = p.px;
     let z = p.pz;
     let yaw = p.yaw;
-    if (toSafe || this.terrain.heightAt(x, z) > -1.2) {
+    if (MAP.gorge) {
+      // on the river: back on the water just upstream, facing downstream
+      const sp = MAP.gorge.safeSpot(MAP.gorge.st(x, z, {}).s);
+      x = sp.x;
+      z = sp.z;
+      yaw = sp.yaw;
+    } else if (toSafe || this.world.depthAt(x, z) < 1.2) {
       x = this.safe.x;
       z = this.safe.z;
       yaw = this.safe.yaw;
@@ -2174,15 +2417,18 @@ class Game {
   checkWipeout(dt) {
     const T = this.phys.tele;
     const w = this.wipe;
+    // riding waves is forgiving: more time to come back from a roll, and it
+    // takes a harder, more crooked landing to put you off
+    const a = this.phys.assist || 0;
     const touching = T.wet > 0.15 || T.ground > 0.05;
     if (T.uy < 0.12 && touching) w.flipT += dt;
     else w.flipT = Math.max(0, w.flipT - dt * 2);
-    if (w.flipT > 0.3) return this.startWipeout('WIPEOUT');
+    if (w.flipT > 0.3 + 0.5 * a) return this.startWipeout('WIPEOUT');
     // landed still stretched out in a Superman: off the back you go
     if (T.superman > 0.45 && touching && !T.airborne) return this.startWipeout('BAILED');
     const im = this.effects.impactFlag || 0;
-    if (im > 9.5 && (Math.abs(T.roll) > 0.75 || T.pitch < -0.6 || T.pitch > 1.25)) return this.startWipeout('WIPEOUT');
-    if (T.ground > 0.3 && T.speed > 14 && this.terrain.heightAt(this.phys.px, this.phys.pz) > -0.3) return this.startWipeout('BEACHED IT');
+    if (im > 9.5 + 4 * a && (Math.abs(T.roll) > 0.75 + 0.35 * a || T.pitch < -0.6 - 0.3 * a || T.pitch > 1.25 + 0.2 * a)) return this.startWipeout('WIPEOUT');
+    if (T.ground > 0.3 && T.speed > 14 && this.world.depthAt(this.phys.px, this.phys.pz) < 0.3) return this.startWipeout(this.world.river ? 'HIT THE ROCKS' : 'BEACHED IT');
   }
 
   // --------------------------------------------------------------- camera
@@ -2207,6 +2453,7 @@ class Game {
     const target = this._v.set(p.px, p.py, p.pz);
     if (this.wipe.on) target.lerp(this.rider.group.position, 0.5);
 
+    if (this.watching && this.state === 'ride' && this.spectateCamera(dt)) return;
     if (this.state === 'menu') {
       c.orbit += dt * 0.22;
       const r = this.mobile || innerWidth < 760 ? 7.2 : 6.4;
@@ -2418,7 +2665,8 @@ class Game {
   // ----------------------------------------------------------------- loop
   handleKeys() {
     const inp = this.input;
-    if (inp.was('Escape') || inp.was('KeyP')) {
+    if ((inp.was('Escape') || inp.was('KeyP')) && this.watching) this.stopSpectate();
+    else if (inp.was('Escape') || inp.was('KeyP')) {
       if (!$('authBox').hidden) $('authBox').hidden = true;
       else if (!$('help').hidden) $('help').hidden = true;
       else if (!$('lobbyPick').hidden) this.closePick();
@@ -2611,7 +2859,8 @@ class Game {
       return;
     }
     const r = await mp.joinLobby(id);
-    if (r === 'full') this.showHint('That lobby is full.', 2);
+    if (r === 'kicked') this.showHint('The admin removed you from the lobbies. Try again in ' + Math.ceil(mp.kickedFor() / 60000) + ' min.', 3);
+    else if (r === 'full') this.showHint('That lobby is full.', 2);
     else if (r === 'ok') {
       // spread everyone out at the start line
       const off = (Math.random() - 0.5) * 30;
@@ -2655,7 +2904,7 @@ class Game {
     const T = p.tele;
 
     this.handleKeys();
-    const riding = this.state === 'ride' && !this.wipe.on && $('help').hidden;
+    const riding = this.state === 'ride' && !this.wipe.on && $('help').hidden && !this.watching;
     const ctl = this.input.update(dt, T.speed / this.spec.top);
     if (riding) {
       const held = this.race.state === 'grid'; // on the start line until GO
@@ -2676,6 +2925,8 @@ class Game {
     this.input.endFrame();
 
     // --- simulate ----------------------------------------------------------
+    // wave-riding help in the wave zone
+    p.assist = MAP.noZone || params.get('assist') === '0' ? 0 : smoothstep(0.02, 0.3, this.waves.zoneMask(p.px, p.pz));
     const steps = clamp(Math.round(dt / FIXED), 1, 12);
     const h = dt / steps;
     for (let i = 0; i < steps; i++) p.step(h);
@@ -2701,13 +2952,14 @@ class Game {
       this.audio.slap(ss);
       this.input.rumble(0.1 + 0.3 * ss, 0.25 + 0.3 * ss, 70);
     }
-    const shallow = this.terrain.heightAt(p.px, p.pz) > -3;
+    const river = this.world.river;
+    const shallow = !!river || this.terrain.heightAt(p.px, p.pz) > -3;
     const bound = shallow ? 1e9 : this.waves.maxHeight(p.px, p.pz, time) + 0.4;
     const waves = this.waves;
     const terrain = this.terrain;
     const tmp = this._d || (this._d = {});
     const surfAt = (this._surfAt = (x, z) => {
-      const wy = waves.displace(x, z, time, tmp).y;
+      const wy = river ? river.waterLevel(x, z) : waves.displace(x, z, time, tmp).y;
       if (!shallow) return wy;
       const g = terrain.heightAt(x, z);
       return g > wy ? g : wy;
@@ -2724,6 +2976,13 @@ class Game {
       this.breakers.roar = 0;
     }
     this.audio.surfLevel = this.breakers.roar;
+    if (this.beachScene) this.beachScene.update(dt, time);
+    if (this.gorge) {
+      this.gorge.update(dt, time, this.camera.position, this._v4 || (this._v4 = { x: 0, z: 0 }), this.effects.density || 1);
+      this._v4.x = p.px;
+      this._v4.z = p.pz;
+      this.audio.surfLevel = this.gorge.roar;
+    }
     this.foam.update(p.px + p.vx * 0.8, p.pz + p.vz * 0.8, dt);
     this.buoys.update(dt, time, p);
     this.race.update(dt, time, p, this.state === 'ride' && !this.wipe.on, this.mp.worldClock());
@@ -2763,7 +3022,7 @@ class Game {
         if (T.trickTry) this.trickTryHint();
         // remember a safe spot to reset to
         this.safe.t += dt;
-        if (this.safe.t > 1 && T.wet > 0.3 && T.uy > 0.8 && this.terrain.heightAt(p.px, p.pz) < -4) {
+        if (this.safe.t > 1 && T.wet > 0.3 && T.uy > 0.8 && this.world.depthAt(p.px, p.pz) > (this.world.river ? 1.6 : 4)) {
           this.safe.t = 0;
           this.safe.x = p.px;
           this.safe.z = p.pz;
@@ -2860,6 +3119,10 @@ class Game {
 
   updateZone() {
     const p = this.phys;
+    if (MAP.noZone) {
+      if (!this.ui.zoneDir.hidden) this.ui.zoneDir.hidden = true;
+      return;
+    }
     const m = this.waves.zoneMask(p.px, p.pz);
     const inZone = this.inZone ? m > 0.25 : m > 0.45;
     if (inZone !== this.inZone) {

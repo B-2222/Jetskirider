@@ -18,11 +18,11 @@ export const FUN = [
   { id: 'allHuge', name: 'Every set huge' },
 ];
 
-export const DEFAULT_WORLD = Object.freeze({ v: 0, sea: 1, day: null, fun: {}, huge: null, summon: 0 });
+export const DEFAULT_WORLD = Object.freeze({ v: 0, sea: 1, day: null, fun: {}, huge: null, summon: 0, banner: null, mute: [] });
 
 // Whatever arrives from the network: keep only what we know, in range.
 export function cleanWorld(o, seaCount) {
-  const w = { v: 0, sea: 1, day: null, fun: {}, huge: null, summon: 0 };
+  const w = { v: 0, sea: 1, day: null, fun: {}, huge: null, summon: 0, banner: null, mute: [] };
   if (!o || typeof o !== 'object') return w;
   if (Number.isFinite(o.v)) w.v = o.v;
   if (Number.isInteger(o.sea) && o.sea >= 0 && o.sea < seaCount) w.sea = o.sea;
@@ -33,6 +33,17 @@ export function cleanWorld(o, seaCount) {
   if (o.fun && typeof o.fun === 'object') for (const f of FUN) if (o.fun[f.id] === true) w.fun[f.id] = true;
   if (Number.isInteger(o.huge)) w.huge = o.huge;
   if (Number.isFinite(o.summon)) w.summon = o.summon;
+  // a message across everyone's screen
+  const b = o.banner;
+  if (b && typeof b === 'object' && typeof b.m === 'string' && Number.isFinite(b.t) && typeof b.i === 'string') {
+    w.banner = { m: b.m.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f]/g, '').slice(0, 140), t: b.t, i: b.i.slice(0, 12) };
+  }
+  // riders whose chat nobody sees for a while (by their label this visit and their name)
+  if (Array.isArray(o.mute)) {
+    for (const m of o.mute.slice(0, 20)) {
+      if (m && typeof m.p === 'string' && typeof m.n === 'string' && Number.isFinite(m.u)) w.mute.push({ p: m.p.slice(0, 40), n: m.n.slice(0, 16), u: m.u });
+    }
+  }
   return w;
 }
 

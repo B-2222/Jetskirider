@@ -7,8 +7,10 @@ import { canvasTexture } from './textures.js';
 
 export function buildTerrainMesh(terrain) {
   const N = makeNoise2D(4242);
+  const land = terrain.land;
+  const size = terrain.size || WORLD_SIZE;
   const seg = 448;
-  const g = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, seg, seg);
+  const g = new THREE.PlaneGeometry(size, size, seg, seg);
   g.rotateX(-Math.PI / 2);
   const pos = g.attributes.position;
   const col = new Float32Array(pos.count * 3);
@@ -19,7 +21,7 @@ export function buildTerrainMesh(terrain) {
   const g2 = new THREE.Color(0.3, 0.47, 0.15);
   const jungle = new THREE.Color(0.07, 0.22, 0.08);
   const rock = new THREE.Color(0.4, 0.37, 0.33);
-  const e = WORLD_SIZE / seg;
+  const e = size / seg;
   const hs = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -32,6 +34,15 @@ export function buildTerrainMesh(terrain) {
     const sz = terrain.heightAt(x, z + e) - terrain.heightAt(x, z - e);
     const slope = Math.hypot(sx, sz) / (2 * e);
     const n = N.fbm(x / 40, z / 40, 3) * 0.5 + 0.5;
+    if (land && land.colorAt) {
+      // the map's own land colours
+      land.colorAt(x, z, h, slope, n, c);
+      const shade = 0.85 + N.noise(x / 6, z / 6) * 0.15;
+      col[i * 3] = c.r * shade;
+      col[i * 3 + 1] = c.g * shade;
+      col[i * 3 + 2] = c.b * shade;
+      continue;
+    }
     c.copy(wet).lerp(sand, smoothstep(0.15, 0.9, h));
     const veg = smoothstep(2.0, 4.2, h + (n - 0.5) * 2.5);
     const gc = g1.clone().lerp(g2, n).lerp(jungle, smoothstep(12, 45, h) * 0.8);
@@ -45,7 +56,14 @@ export function buildTerrainMesh(terrain) {
   // drop triangles that are well under water
   const src = g.index.array;
   const idx = [];
+  // (a map with its own detailed land mesh: leave out what that covers)
+  const cov = land && land.covered ? new Uint8Array(pos.count) : null;
+  if (cov) for (let i = 0; i < pos.count; i++) cov[i] = land.covered(pos.getX(i), pos.getZ(i)) ? 1 : 0;
   for (let i = 0; i < src.length; i += 3) {
+    if (cov) {
+      if (!(cov[src[i]] && cov[src[i + 1]] && cov[src[i + 2]])) idx.push(src[i], src[i + 1], src[i + 2]);
+      continue;
+    }
     if (hs[src[i]] > -2.5 || hs[src[i + 1]] > -2.5 || hs[src[i + 2]] > -2.5) idx.push(src[i], src[i + 1], src[i + 2]);
   }
   g.setIndex(idx);
@@ -354,7 +372,7 @@ export class Buoys {
       const dx = b.x - phys.px;
       const dz = b.z - phys.pz;
       if (Math.abs(dx) > 400 || Math.abs(dz) > 400) continue;
-      const s = this.world.waves.sample(b.x, b.z, t, this._s);
+      const s = this.world.sample(b.x, b.z, t, this._s);
       b.g.position.y = s.h - 0.05;
       b.tiltX += (-s.nz * 1.2 - b.tiltX) * Math.min(1, dt * 4);
       b.tiltZ += (s.nx * 1.2 - b.tiltZ) * Math.min(1, dt * 4);

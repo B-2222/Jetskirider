@@ -7,7 +7,9 @@ export const WORLD_SIZE = 4096; // metres, centred on the origin
 export const TERRAIN_RES = 768;
 const SEA_FLOOR = -26;
 // the noise seed for the land (a map may change it before the world is built)
-export const TERRAIN = { seed: 1337 };
+// A map can bring its own land (see gorge.js): its own size, cell size and
+// height function, and its own water (a river) instead of the sea.
+export const TERRAIN = { seed: 1337, size: WORLD_SIZE, res: TERRAIN_RES, land: null };
 
 export const ISLANDS = [
   { x: -60, z: -700, r: 380, h: 88 },
@@ -30,10 +32,20 @@ export const SANDBARS = [
 
 export class Terrain {
   constructor() {
-    this.size = WORLD_SIZE;
-    this.res = TERRAIN_RES;
+    this.size = TERRAIN.size;
+    this.res = TERRAIN.res;
+    this.land = TERRAIN.land;
     this.data = new Float32Array(this.res * this.res);
-    this.generate();
+    if (this.land) this.generateLand();
+    else this.generate();
+  }
+
+  generateLand() {
+    const res = this.res, size = this.size, land = this.land;
+    for (let j = 0; j < res; j++) {
+      const z = (j / (res - 1) - 0.5) * size;
+      for (let i = 0; i < res; i++) this.data[j * res + i] = land.heightAt((i / (res - 1) - 0.5) * size, z);
+    }
   }
 
   generate() {
@@ -101,6 +113,9 @@ export class World {
   constructor(waves, terrain) {
     this.waves = waves;
     this.terrain = terrain;
+    // a river instead of the sea (the land knows where its water is)
+    this.land = terrain.land || null;
+    this.river = this.land && this.land.water ? this.land : null;
     this.ramps = [];
     waves.depthAt = (x, z) => -terrain.heightAt(x, z);
     this._g = {};
@@ -132,6 +147,10 @@ export class World {
   groundAt(x, z, o) {
     let g = this.terrain.heightAt(x, z);
     let mu = 0.8;
+    if (this.land && this.land.rockAt) {
+      const r = this.land.rockAt(x, z);
+      if (r > g) g = r;
+    }
     for (let i = 0; i < this.ramps.length; i++) {
       const rh = this.rampHeight(this.ramps[i], x, z);
       if (rh > g) {
@@ -144,10 +163,23 @@ export class World {
   }
 
   sample(x, z, t, o) {
-    this.waves.sample(x, z, t, o);
-    o.water = o.h;
+    if (this.river) this.river.water(x, z, o);
+    else {
+      this.waves.sample(x, z, t, o);
+      o.water = o.h;
+    }
     o.ground = this.groundAt(x, z, o);
     return o;
+  }
+
+  // the still water level here (the sea is at 0; a river steps down)
+  levelAt(x, z) {
+    return this.river ? this.river.waterLevel(x, z) : 0;
+  }
+
+  // how deep the still water is here (negative on land)
+  depthAt(x, z) {
+    return this.levelAt(x, z) - this.terrain.heightAt(x, z);
   }
 
   groundNormal(x, z, n) {
@@ -164,6 +196,7 @@ export class World {
   }
 
   waterHeight(x, z, t) {
+    if (this.river) return this.river.waterLevel(x, z);
     return this.waves.sample(x, z, t, this._g).h;
   }
 }

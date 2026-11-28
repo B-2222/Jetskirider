@@ -462,3 +462,21 @@ button:focus-visible, [role="option"]:focus-visible { outline: 2px solid var(--a
 #chatInput { pointer-events: auto; background: rgba(8, 14, 20, 0.85); border: 1px solid var(--accent); border-radius: 4px; color: var(--foam); font: inherit; font-size: 15px; padding: 7px 10px; }
 #chatInput:focus { outline: none; }
 @media (max-width: 720px) { .chat { bottom: 230px; } }
+
+/* ---------- admin: banner, moderation, spectate ---------- */
+.adm-banner { position: absolute; top: max(14px, env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 40; display: flex; align-items: center; gap: 12px; max-width: min(92vw, 760px); padding: 11px 18px 10px; background: rgba(4, 18, 26, 0.92); border: 1px solid #ffc531; border-radius: 6px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45); animation: banner-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); pointer-events: none; }
+.adm-banner b { font-family: var(--display); font-weight: 900; font-style: italic; letter-spacing: 0.1em; font-size: 15px; color: #15120a; background: #ffc531; padding: 3px 8px 2px; border-radius: 3px; flex: none; }
+.adm-banner span { font-size: 17px; font-weight: 600; color: var(--foam); line-height: 1.3; overflow-wrap: anywhere; }
+@keyframes banner-in { from { opacity: 0; transform: translate(-50%, -14px); } to { opacity: 1; transform: translate(-50%, 0); } }
+#admBannerText { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; color: var(--foam); font: inherit; padding: 6px 10px; }
+.admin select, .report select { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; color: var(--foam); font: inherit; padding: 6px 8px; max-width: 200px; }
+.admin .row button, .report button { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px 5px; font-size: 13px; }
+#admKick { border-color: #ff6a4a; color: #ff8a6a; }
+.adm-reports { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; flex: 1; min-width: 0; max-height: 150px; overflow-y: auto; }
+.adm-reports li { font-size: 12px; background: var(--panel); border-radius: 3px; padding: 4px 8px; display: flex; justify-content: space-between; gap: 8px; }
+.adm-reports li small { color: var(--mist); white-space: nowrap; }
+.adm-reports li.empty { color: var(--mist); }
+.spec-bar { position: absolute; left: 50%; bottom: max(18px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 12; display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; background: rgba(4, 18, 26, 0.88); border: 1px solid #ffc531; border-radius: 6px; }
+.spec-bar b { font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: 0.04em; color: #ffc531; min-width: 80px; }
+.spec-bar button { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px 11px 5px; font-family: var(--display); font-weight: 800; font-size: 15px; }
+.spec-bar #specStop { border-color: #ffc531; color: #ffc531; }
