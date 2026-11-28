@@ -364,6 +364,8 @@ export class Race {
     const ax = gt.lx - x0, az = gt.lz - z0;
     const t = (ax * ez - az * ex) / den; // along the ski's move
     const u = (ax * mz - az * mx) / den; // along the gate
+    // down a river the walls keep you on course: anywhere across counts
+    if (this.open) return t >= 0 && t <= 1 && u >= -1.5 && u <= 2.5;
     return t >= 0 && t <= 1 && u >= -0.05 && u <= 1.05;
   }
 

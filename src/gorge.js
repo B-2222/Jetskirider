@@ -228,10 +228,13 @@ export class Gorge {
     const at = Math.abs(t);
     const u = at / W;
     if (u <= 1) {
-      let D = this.depth(s) * (1 - Math.pow(u, 2.3));
-      // gravel bars on the inside of bends
+      // narrow water is deep right up to the walls (a slot); wide water
+      // shelves off gently at the sides
+      const box = lerp(6, 2.3, sm(13, 24, W));
+      let D = this.depth(s) * (1 - Math.pow(u, box));
+      // gravel bars on the inside of bends (where there is room for them)
       const k = this.path.k[this.idx(s)];
-      const inside = k * t > 0 ? clamp(Math.abs(k) * 220, 0, 1) : 0;
+      const inside = k * t > 0 ? clamp(Math.abs(k) * 220, 0, 1) * sm(14, 26, W) : 0;
       D *= 1 - 0.75 * inside * sm(0.25, 0.9, u);
       // ledges at the lips, with a deeper tongue through them
       for (const d of DROPS) {

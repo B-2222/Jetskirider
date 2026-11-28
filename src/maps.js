@@ -150,7 +150,7 @@ export const MAPS = [
     veg: { palms: 0, canopy: 0, rocks: 0 },
     mood: { grey: 0.18, dark: 0.95, sun: 0.92, cloud: 0.55, fog: 2600, exposure: 1.0, water: [0.75, 1.0, 1.0] },
     // down the river, top lake to bottom lake (gates set from the river)
-    race: { name: 'Gorge Run', open: true, circle: null, gates: [], medals: [107, 95, 75] },
+    race: { name: 'Gorge Run', open: true, circle: null, gates: [], medals: [116, 101, 78] },
   },
   {
     id: 'beach',
@@ -169,7 +169,7 @@ export const MAPS = [
     spawn: { x: 30, z: 330, yaw: -Math.PI / 2 },
     ramps: [],
     veg: { palms: 0, canopy: 0, rocks: 0 },
-    race: { name: 'Bar Run', circle: [120, 315], gates: [[-420, 610], [0, 650], [420, 610], [640, 430], [380, 330], [0, 320], [-380, 330], [-640, 430]], medals: [135, 124, 96] },
+    race: { name: 'Bar Run', circle: [120, 315], gates: [[-420, 610], [0, 650], [420, 610], [640, 430], [380, 330], [0, 320], [-380, 330], [-640, 430]], medals: [140, 127, 99] },
   },
 ];
 
